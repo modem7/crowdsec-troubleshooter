@@ -79,3 +79,24 @@ See README. Short version: the only real argument for one (continuous
 monitoring) is already served by a scheduled one-shot run, and a daemon
 means a machine credential sitting live indefinitely, which undoes the
 credential-hygiene design of everything else in this tool.
+
+## Why no init system (s6/tini/dumb-init)
+
+Considered when the question of signal handling for `test_live_block.sh`'s
+cleanup trap came up. s6-overlay specifically is for supervising *multiple*
+long-running processes in one container — overkill for a single-process
+one-shot tool, and it doesn't even solve the actual problem here.
+
+The real problem: `troubleshoot.sh` runs as PID 1 in the container, and
+Linux gives PID 1 special treatment — any signal without an explicitly
+installed handler is silently ignored by the kernel. A bare `trap cleanup
+EXIT` (verified empirically to work fine for a normal, non-PID-1 process)
+may not count as an explicit SIGTERM handler in a PID-1 context, meaning
+`docker stop` could be ignored until the grace period expires and SIGKILL
+forces it — skipping cleanup of the test ban entirely, and SIGKILL can't be
+trapped by anything regardless of what supervises the process.
+
+The actual fix costs nothing: `trap cleanup EXIT SIGTERM SIGINT` — naming
+the signals explicitly is what makes it a real handler. No tini, no
+dumb-init, no s6, no image size or dependency cost. See
+`checks/tier2_machine/test_live_block.sh`.

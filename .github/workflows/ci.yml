@@ -81,6 +81,17 @@ jobs:
           done
           exit $fail
 
+      - name: Every 'trap ... EXIT' must also explicitly trap SIGTERM/SIGINT (PID-1 signal semantics — see DESIGN.md)
+        run: |
+          fail=0
+          for f in $(grep -rl "^trap .* EXIT" --include="*.sh" .); do
+            if ! grep -qE "^trap .*EXIT.*SIGTERM" "$f"; then
+              echo "::error file=$f::trap on EXIT without explicit SIGTERM/SIGINT — see DESIGN.md 'Why no init system'"
+              fail=1
+            fi
+          done
+          exit $fail
+
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest

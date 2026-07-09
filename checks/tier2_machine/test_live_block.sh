@@ -56,7 +56,16 @@ cleanup() {
       warn "Cleanup request failed — verify manually: cscli decisions list -i ${TEST_IP}"
   fi
 }
-trap cleanup EXIT
+trap cleanup EXIT SIGTERM SIGINT
+# Explicit, not just EXIT: this script runs as PID 1 inside the container.
+# Linux gives PID 1 special treatment — any signal without an explicitly
+# installed handler is silently ignored by the kernel (so an init process
+# can't die by accident). A bare `trap cleanup EXIT` may not count as an
+# explicit SIGTERM handler in that context, meaning `docker stop` could be
+# ignored until the grace period expires and SIGKILL forces it — skipping
+# this cleanup entirely, and SIGKILL can't be trapped by anything. Naming
+# SIGTERM/SIGINT explicitly here is the actual fix; it costs nothing and
+# needs no init-system dependency (tini/dumb-init/s6) to get right.
 
 step "Adding test decision banning ${TEST_IP} for 60s..."
 add_response="$(curl -fsS -X POST --max-time 10 \
