@@ -1,13 +1,15 @@
+# syntax = docker/dockerfile:latest
+
 FROM alpine:3.24
 
 RUN apk add --no-cache bash curl jq
 
 WORKDIR /app
-COPY lib/ lib/
-COPY checks/ checks/
-COPY setup/ setup/
-COPY versioncheck/ versioncheck/
-COPY capability_check.sh troubleshoot.sh ./
+COPY --link lib/ lib/
+COPY --link checks/ checks/
+COPY --link setup/ setup/
+COPY --link versioncheck/ versioncheck/
+COPY --link capability_check.sh troubleshoot.sh ./
 RUN chmod +x troubleshoot.sh capability_check.sh \
     lib/*.sh setup/*.sh versioncheck/*.sh \
     checks/*/*.sh
