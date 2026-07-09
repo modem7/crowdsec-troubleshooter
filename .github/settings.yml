@@ -1,0 +1,33 @@
+# https://github.com/apps/settings
+# https://github.com/repository-settings/app
+
+repository:
+  #name: NewRepo
+  description: Content to add by default to new repos
+  homepage: https://modem7.com
+  topics: default, repo, files
+
+  private: false
+  has_issues: true
+  has_wiki: false
+  has_downloads: true
+  has_projects: false
+  has_discussions: false
+
+  default_branch: master
+
+  allow_squash_merge: true
+  allow_rebase_merge: true
+  allow_merge_commit: true
+
+  # Auto-delete head branches after merge
+  delete_branch_on_merge: true
+
+  # Always suggest updating PR branches that are behind base
+  allow_update_branch: true
+
+  enable_automated_security_fixes: true
+  enable_vulnerability_alerts: true
+
+
+# Labels are managed by .github/config/labels.yml + the labelsync workflow
