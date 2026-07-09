@@ -27,7 +27,7 @@ services:
       # TRAEFIK_PROTECTED_URL: https://traefik.example.com
       # TRAEFIK_DIRECT_URL: http://traefik:8080
     # secrets: [crowdsec_machine]
-    volumes:
+    # volumes:
       # Entirely optional — only add if you want the tier3_mounted checks
       # (DOCKER-USER chain evidence, duplicate acquisition entries, syslog
       # hinting, compose hardening audit). Everything above works without them.
