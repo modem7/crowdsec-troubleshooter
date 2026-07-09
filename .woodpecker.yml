@@ -47,6 +47,30 @@ steps:
         from_secret: docker_password
       tags: latest
 
+  # UNVERIFIED — proposed by analogy with the GitHub Actions side (see
+  # publish-ghcr.yml), but I can't actually test Woodpecker's DinD mechanics
+  # the way I verified the GitHub Actions runner behavior. The privileged
+  # flag matches build-and-push above, but whether a plain `docker` image
+  # gets working docker-cli access this way on your instance specifically
+  # needs confirming — check this actually runs before relying on it.
+  - name: verify-published-image
+    image: docker
+    privileged: true
+    depends_on: [build-and-push]
+    commands:
+      - docker pull ${CI_REPO}:latest
+      - docker buildx imagetools inspect ${CI_REPO}:latest | tee /tmp/manifest.txt
+      - grep -q "linux/amd64" /tmp/manifest.txt
+      - grep -q "linux/arm64" /tmp/manifest.txt
+      - |
+        set +e
+        output=$(docker run --rm ${CI_REPO}:latest 2>&1)
+        code=$?
+        set -e
+        echo "$output"
+        [ "$code" -ne 0 ] || (echo "expected non-zero exit with no CROWDSEC_LAPI_URL" && exit 1)
+        echo "$output" | grep -q "CROWDSEC_LAPI_URL is not set" || (echo "missing expected error in PUBLISHED image" && exit 1)
+
   - name: pushrm-dockerhub
     image: chko/docker-pushrm
     depends_on:
