@@ -1,0 +1,45 @@
+# Scenario A — Traefik-only protection via the Traefik plugin bouncer.
+# Recommended default for anyone fronting services with Traefik.
+# No host firewall, no NET_ADMIN, no DOCKER-USER chain to get wrong —
+# sidesteps the most commonly reported CrowdSec problem entirely.
+#
+# Uses maxlerebourg/crowdsec-bouncer-traefik-plugin, NOT the older
+# fbonalair/traefik-crowdsec-bouncer — CrowdSec's own docs steer people away
+# from the latter since it never got updated for the AppSec/WAF component.
+
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    environment:
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve"
+    volumes:
+      - crowdsec-config:/etc/crowdsec
+      - crowdsec-data:/var/lib/crowdsec/data
+      - traefik-logs:/var/log/traefik:ro
+    networks: [crowdsec]
+
+  traefik:
+    image: traefik:latest
+    command:
+      - --accesslog
+      - --accesslog.filepath=/var/log/traefik/access.log
+      - --experimental.plugins.crowdsec-bouncer.modulename=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+      - --experimental.plugins.crowdsec-bouncer.version=v1.4.0
+    labels:
+      - "traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.enabled=true"
+      - "traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.crowdseclapikey=${BOUNCER_API_KEY}"
+    volumes:
+      - traefik-logs:/var/log/traefik
+    networks: [crowdsec, proxy]
+    # Note: no ports published for the dashboard/ping API here — reach them
+    # via the router-protected domain path only, or bind to 127.0.0.1 if you
+    # specifically want host-local curl access. See the compose-hardening
+    # check in the troubleshooter for exactly this class of finding.
+
+networks:
+  crowdsec: {}
+  proxy: {}
+volumes:
+  crowdsec-config: {}
+  crowdsec-data: {}
+  traefik-logs: {}

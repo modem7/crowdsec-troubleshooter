@@ -1,0 +1,44 @@
+# Add this service to whichever scenario compose file you're using.
+# CROWDSEC_LAPI_URL alone gets you the basic wellness check (tier 0 — no
+# credential needed at all). Everything else is commented out and opt-in.
+#
+# This service is deliberately unprivileged: no docker.sock, no host
+# networking, no capabilities, no daemon (docker compose run, not up).
+
+services:
+  crowdsec-troubleshooter:
+    image: modem7/crowdsec-troubleshooter:latest
+    environment:
+      CROWDSEC_LAPI_URL: http://crowdsec:8080
+      # Runs tier0 checks with just the line above: LAPI liveness,
+      # log-parsing activity, bouncer-type fingerprint, LAPI-URL scope
+      # heuristic. No key needed for any of these.
+
+      # Optional — only add if you want to check individual IPs' ban status:
+      # CROWDSEC_LAPI_KEY: ${TROUBLESHOOTER_BOUNCER_KEY}
+
+      # Optional — only add if you want the live block/unban test (the
+      # single most convincing "is this actually working" check):
+      # CROWDSEC_MACHINE_CREDENTIALS_FILE: /run/secrets/crowdsec_machine
+
+      # Optional — bouncer-type fingerprinting and the auth-bypass comparison:
+      # TRAEFIK_BOUNCER_URL: http://traefik-bouncer:8080
+      # TRAEFIK_API_URL: http://traefik:8080
+      # TRAEFIK_PROTECTED_URL: https://traefik.example.com
+      # TRAEFIK_DIRECT_URL: http://traefik:8080
+    # secrets: [crowdsec_machine]
+    volumes:
+      # Entirely optional — only add if you want the tier3_mounted checks
+      # (DOCKER-USER chain evidence, duplicate acquisition entries, syslog
+      # hinting, compose hardening audit). Everything above works without them.
+      # - ./firewall-bouncer.yaml:/mnt/bouncer/firewall-bouncer.yaml:ro
+      # - ./firewall-bouncer.log:/mnt/bouncer/firewall-bouncer.log:ro
+      # - ./docker-compose.yml:/mnt/compose/docker-compose.yml:ro
+      # - $USERDIR/Crowdsec/config/acquis.yaml:/mnt/crowdsec/acquis.yaml:ro
+    networks: [crowdsec]
+    profiles: ["troubleshoot"]
+    # Run with: docker compose --profile troubleshoot run --rm crowdsec-troubleshooter
+
+# secrets:
+#   crowdsec_machine:
+#     file: ./crowdsec_machine_credentials.yaml

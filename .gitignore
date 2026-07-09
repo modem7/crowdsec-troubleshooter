@@ -1,0 +1,8 @@
+# Local test/secrets — never commit real credentials
+*.env
+.env
+crowdsec_machine_credentials.yaml
+firewall-bouncer.log
+*.local.yml
+
+.DS_Store
