@@ -1,7 +1,7 @@
 # crowdsec-troubleshooter
 
 [![CI](https://github.com/modem7/crowdsec-troubleshooter/actions/workflows/ci.yml/badge.svg)](https://github.com/modem7/crowdsec-troubleshooter/actions/workflows/ci.yml)
-[![Woodpecker](https://woodpecker.modem7.com/api/badges/REPLACE_WITH_REPO_ID/status.svg)](https://woodpecker.modem7.com/repos/REPLACE_WITH_REPO_ID)
+[![status-badge](https://woodpecker.modem7.com/api/badges/3/status.svg)](https://woodpecker.modem7.com/repos/3)
 [![Last Commit](https://img.shields.io/github/last-commit/modem7/crowdsec-troubleshooter)](https://github.com/modem7/crowdsec-troubleshooter/commits/master)
 [![Docker Pulls](https://img.shields.io/docker/pulls/modem7/crowdsec-troubleshooter)](https://hub.docker.com/r/modem7/crowdsec-troubleshooter)
 [![Docker Image Size](https://img.shields.io/docker/image-size/modem7/crowdsec-troubleshooter)](https://hub.docker.com/r/modem7/crowdsec-troubleshooter)
