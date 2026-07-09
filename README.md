@@ -1,6 +1,10 @@
 # crowdsec-troubleshooter
 
 [![CI](https://github.com/modem7/crowdsec-troubleshooter/actions/workflows/ci.yml/badge.svg)](https://github.com/modem7/crowdsec-troubleshooter/actions/workflows/ci.yml)
+[![Woodpecker](https://woodpecker.modem7.com/api/badges/REPLACE_WITH_REPO_ID/status.svg)](https://woodpecker.modem7.com/repos/REPLACE_WITH_REPO_ID)
+[![Last Commit](https://img.shields.io/github/last-commit/modem7/crowdsec-troubleshooter)](https://github.com/modem7/crowdsec-troubleshooter/commits/master)
+[![Docker Pulls](https://img.shields.io/docker/pulls/modem7/crowdsec-troubleshooter)](https://hub.docker.com/r/modem7/crowdsec-troubleshooter)
+[![Docker Image Size](https://img.shields.io/docker/image-size/modem7/crowdsec-troubleshooter)](https://hub.docker.com/r/modem7/crowdsec-troubleshooter)
 
 A small, unprivileged, run-once Docker tool for diagnosing CrowdSec + Traefik
 setups — a wellness check, an IP block checker, and (optionally) a live
@@ -63,6 +67,23 @@ or polled by Uptime Kuma, gets the same outcome with none of the downside.
 A daemon means a machine credential (create/delete real bans) sitting live
 in a running process indefinitely — the one architecture choice that would
 undo the whole credential-hygiene design of this tool for no functional gain.
+
+## Images
+
+Published to both registries on every successful build — pick whichever fits your setup:
+
+```bash
+docker pull modem7/crowdsec-troubleshooter:latest        # Docker Hub — via Woodpecker
+docker pull ghcr.io/modem7/crowdsec-troubleshooter:latest # GHCR — via GitHub Actions
+```
+
+Docker Hub builds on every push to `master` that touches the image's actual
+source (`Dockerfile`, `lib/`, `checks/`, `setup/`, `versioncheck/`,
+`capability_check.sh`, `troubleshoot.sh`) — see `.woodpecker.yml`. GHCR
+publishes only after the `CI` GitHub Actions workflow has actually succeeded
+for that commit — see `.github/workflows/publish-ghcr.yml` — so an image
+can't land on GHCR without every lint/test/build check passing first. Both
+are multi-arch (`linux/amd64` + `linux/arm64`).
 
 ## Testing / CI
 
