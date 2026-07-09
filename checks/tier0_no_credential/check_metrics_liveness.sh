@@ -20,25 +20,31 @@ sum_hit_counters() {
     | awk '{sum += $NF} END {print sum+0}'
 }
 
-first="$(http_get "${METRICS_URL}/metrics" 2>/dev/null | sum_hit_counters)"
+# NOTE: awk's `END {print sum+0}` always prints "0" even on completely empty
+# input, so checking `[[ -z "$first" ]]` after piping straight through awk
+# can never detect an unreachable endpoint — awk always produces output.
+# Fixed by checking the raw curl response for emptiness BEFORE summarizing.
+raw_first="$(http_get "${METRICS_URL}/metrics" 2>/dev/null)"
 
-if [[ -z "$first" ]]; then
+if [[ -z "$raw_first" ]]; then
   warn "Couldn't reach the metrics endpoint at ${METRICS_URL}/metrics"
   info "Most likely cause: prometheus.listen_addr is still the default 127.0.0.1 inside crowdsec's"
   info "own config, which is loopback-only and invisible to this container even on the same network."
   info "Set prometheus.listen_addr: 0.0.0.0 in crowdsec's config.yaml to fix this."
   exit 1
 fi
+first="$(echo "$raw_first" | sum_hit_counters)"
 
 step "First metrics sample: ${first} total log lines processed. Waiting ${POLL_GAP_SECONDS}s..."
 sleep "$POLL_GAP_SECONDS"
 
-second="$(http_get "${METRICS_URL}/metrics" 2>/dev/null | sum_hit_counters)"
+raw_second="$(http_get "${METRICS_URL}/metrics" 2>/dev/null)"
 
-if [[ -z "$second" ]]; then
+if [[ -z "$raw_second" ]]; then
   warn "Metrics endpoint stopped responding between polls — check crowdsec is still running"
   exit 1
 fi
+second="$(echo "$raw_second" | sum_hit_counters)"
 
 delta=$(( second - first ))
 if (( delta > 0 )); then

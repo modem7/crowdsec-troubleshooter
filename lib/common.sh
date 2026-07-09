@@ -38,11 +38,18 @@ http_get() {
 }
 
 # http_status <url> [header...] -> prints just the HTTP status code, "000" on failure
+# NOTE: curl's -w already prints "000" on connection failure even though it
+# also exits non-zero — an earlier version of this appended `|| echo "000"`
+# on top of that, producing a concatenated "000000". Fixed by capturing
+# curl's own output and only falling back via parameter expansion if it's
+# truly empty (which happens essentially never, but is the correct guard).
 http_status() {
   local url="$1"; shift
   local -a hdrs=()
   for h in "$@"; do hdrs+=(-H "$h"); done
-  curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "${hdrs[@]}" "$url" 2>/dev/null || echo "000"
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "${hdrs[@]}" "$url" 2>/dev/null)
+  echo "${code:-000}"
 }
 
 require_jq() {
