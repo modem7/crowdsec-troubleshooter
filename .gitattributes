@@ -1,0 +1,816 @@
+## UNIVERSAL GITATTRIBUTES FOR MULTI-TECHNOLOGY PROJECTS
+#
+# Suitable for repositories containing:
+# - Web (HTML, CSS, JavaScript, TypeScript)
+# - Systems (C, C++, Rust, Go)
+# - Scripting (Python, Ruby, Perl, Shell)
+# - Infrastructure (Docker, Kubernetes, Terraform, Ansible)
+# - Data (SQL, JSON, YAML, TOML)
+# - Documentation (Markdown, AsciiDoc, LaTeX)
+#
+# Details per file setting:
+#   text    These files should be normalized (i.e. convert CRLF to LF).
+#   binary  These files are binary and should be left untouched.
+#
+# Note that binary is a macro for -text -diff.
+######################################################################
+
+# Auto detect
+##   Handle line endings automatically for files detected as
+##   text and leave all files detected as binary untouched.
+##   This will handle all files NOT defined below.
+*                 text=auto eol=lf
+
+# Common Programming Languages
+## Web Technologies
+*.coffee          text
+*.css             text diff=css
+*.htm             text diff=html
+*.html            text diff=html
+*.js              text
+*.jsx             text
+*.json            text
+*.less            text
+*.mjs             text
+*.cjs             text
+*.sass            text
+*.scss            text diff=css
+*.styl            text
+*.ts              text
+*.tsx             text
+*.vue             text
+*.svelte          text
+*.astro           text
+*.xhtml           text diff=html
+*.xml             text
+
+## Systems Programming
+*.c               text diff=cpp
+*.cc              text diff=cpp
+*.cpp             text diff=cpp
+*.cxx             text diff=cpp
+*.h               text diff=cpp
+*.hh              text diff=cpp
+*.hpp             text diff=cpp
+*.hxx             text diff=cpp
+*.rs              text diff=rust
+*.go              text diff=golang
+*.zig             text
+
+## Scripting Languages
+*.py              text diff=python
+*.py3             text diff=python
+*.pyw             text diff=python
+*.pyx             text diff=python
+*.pxd             text diff=python
+*.pyi             text diff=python
+*.py.jinja        text diff=python
+*.py.jinja2       text diff=python
+*.py.j2           text diff=python
+*.pyx.in          text diff=python
+*.py.in           text diff=python
+*.wsgi            text diff=python
+*.yapf            text
+*.yapfignore      text
+*.rb              text diff=ruby
+*.ruby            text diff=ruby
+*.rake            text diff=ruby
+*.pl              text diff=perl
+*.pm              text diff=perl
+*.t               text diff=perl
+*.lua             text
+*.tcl             text
+*.r               text
+*.R               text
+*.Rmd             text
+*.Rnw             text
+*.Rtex            text
+*.Rd              text
+
+## Data Science / Jupyter / Notebooks
+*.ipynb           text eol=lf
+*.jl              text
+*.juliahistory    text
+*.julia           text
+*.sageipynb       text
+*.sagenb          text
+*.worksheets      text
+Notebook          text
+notebook.tex      text
+*.bib             text diff=bibtex
+*.Rproj           text
+.Rproj.user/**    text
+.Rhistory         text
+.RData            binary
+.Ruserdata/**     text
+
+## JVM Languages
+*.java            text diff=java
+*.scala           text
+*.groovy          text
+*.gradle          text
+*.kt              text
+*.kts             text
+*.clj             text
+*.cljs            text
+
+## .NET Languages
+*.cs              text diff=csharp
+*.vb              text
+*.fs              text
+*.fsi             text
+*.fsx             text
+*.xaml            text
+
+## Shell Scripts
+*.bash            text eol=lf
+*.sh              text eol=lf diff=bash
+*.zsh             text eol=lf
+*.fish            text eol=lf
+*.ksh             text eol=lf
+*.csh             text eol=lf
+*.tcsh            text eol=lf
+*.ps1             text eol=crlf
+*.psm1            text eol=crlf
+*.psd1            text eol=crlf
+*.bat             text eol=crlf
+*.cmd             text eol=crlf
+
+## PHP
+*.php             text diff=php
+*.phps            text diff=php
+*.php3            text diff=php
+*.php4            text diff=php
+*.php5            text diff=php
+*.php7            text diff=php
+*.phtml           text
+
+## Infrastructure as Code
+### Docker
+Dockerfile        text eol=lf
+Dockerfile.*      text eol=lf
+.dockerignore     text eol=lf
+docker-compose*.yml text eol=lf
+docker-compose*.yaml text eol=lf
+
+### Kubernetes
+*.k8s.yml         text eol=lf
+*.k8s.yaml        text eol=lf
+
+### Terraform / HCL
+*.tf              text eol=lf
+*.tfvars          text eol=lf
+*.hcl             text eol=lf
+*.nomad           text eol=lf
+*.consul          text eol=lf
+*.vault           text eol=lf
+.terraformrc      text eol=lf
+terraform.rc      text eol=lf
+
+### Ansible
+*.ansible.yml     text eol=lf
+*.ansible.yaml    text eol=lf
+**/playbooks/*.yml text eol=lf
+**/playbooks/*.yaml text eol=lf
+**/inventory/*    text eol=lf
+**/group_vars/**  text eol=lf
+**/host_vars/**   text eol=lf
+
+### Cloud Formation
+*.cfn.yml         text eol=lf
+*.cfn.yaml        text eol=lf
+*.cfn.json        text eol=lf
+
+### Vagrant
+Vagrantfile       text eol=lf
+
+## Data & Config Files
+*.yaml            text eol=lf
+*.yml             text eol=lf
+*.toml            text eol=lf
+*.ini             text
+*.cfg             text
+*.conf            text
+*.config          text
+*.cnf             text
+*.env             text
+*.env.*           text
+*.properties      text
+*.props           text
+
+## Database
+*.sql             text
+*.sqlite          binary
+*.sqlite3         binary
+*.db              binary
+*.db3             binary
+
+## Documentation
+*.md              text diff=markdown
+*.markdown        text diff=markdown
+*.mdwn            text diff=markdown
+*.mdown           text diff=markdown
+*.mkd             text diff=markdown
+*.mkdn            text diff=markdown
+*.mdtxt           text
+*.mdtext          text
+*.mdx             text diff=markdown
+*.rst             text
+*.adoc            text
+*.asciidoc        text
+*.textile         text
+*.txt             text
+*.tex             text diff=tex
+*.ltx             text diff=tex
+*.latex           text diff=tex
+*.bib             text diff=bibtex
+*.bibtex          text diff=bibtex
+AUTHORS           text
+CHANGELOG         text
+CHANGES           text
+CONTRIBUTING      text
+COPYING           text
+COPYRIGHT         text
+*COPYRIGHT*       text
+INSTALL           text
+LICENSE           text
+license           text
+NEWS              text
+README            text
+readme            text
+*README*          text
+TODO              text
+
+## Build Files
+Makefile          text eol=lf
+makefile          text eol=lf
+GNUmakefile       text eol=lf
+CMakeLists.txt    text eol=lf
+*.cmake           text eol=lf
+*.make            text eol=lf
+*.mk              text eol=lf
+Rakefile          text eol=lf
+*.rake            text eol=lf
+*.sbt             text eol=lf
+*.gradle          text eol=lf
+*.gradle.kts      text eol=lf
+*.maven           text eol=lf
+pom.xml           text eol=lf
+build.xml         text eol=lf
+*.ant             text eol=lf
+*.bazel           text eol=lf
+*.bzl             text eol=lf
+BUILD             text eol=lf
+WORKSPACE         text eol=lf
+*.ninja           text eol=lf
+*.gyp             text eol=lf
+*.gypi            text eol=lf
+
+## Templates
+*.dot             text
+*.ejs             text
+*.erb             text
+*.haml            text
+*.handlebars      text
+*.hbs             text
+*.hbt             text
+*.jade            text
+*.pug             text
+*.latte           text
+*.liquid          text
+*.mustache        text
+*.njk             text
+*.slim            text
+*.tpl             text
+*.tmpl            text
+*.twig            text
+*.jinja           text
+*.jinja2          text
+*.j2              text
+
+## Package Management
+package.json      text eol=lf
+package-lock.json text eol=lf -diff
+pnpm-lock.yaml    text eol=lf -diff
+yarn.lock         text eol=lf -diff
+*.lock            text eol=lf -diff
+Gemfile           text eol=lf diff=ruby
+Gemfile.lock      text eol=lf -diff
+Pipfile           text eol=lf
+Pipfile.lock      text eol=lf -diff
+poetry.lock       text eol=lf -diff
+composer.json     text eol=lf
+composer.lock     text eol=lf -diff
+Cargo.toml        text eol=lf
+Cargo.lock        text eol=lf -diff
+go.mod            text eol=lf
+go.sum            text eol=lf -diff
+requirements.txt  text eol=lf
+requirements*.txt text eol=lf
+setup.py          text eol=lf
+setup.cfg         text eol=lf
+pyproject.toml    text eol=lf
+
+## CI/CD
+.travis.yml       text eol=lf
+.gitlab-ci.yml    text eol=lf
+.gitlab-ci.yaml   text eol=lf
+.circleci/config.yml text eol=lf
+Jenkinsfile       text eol=lf
+jenkins*.groovy   text eol=lf
+azure-pipelines.yml text eol=lf
+azure-pipelines.yaml text eol=lf
+appveyor.yml      text eol=lf
+.appveyor.yml     text eol=lf
+bitbucket-pipelines.yml text eol=lf
+.drone.yml        text eol=lf
+.drone.yaml       text eol=lf
+**/workflows/*.yml text eol=lf
+**/workflows/*.yaml text eol=lf
+.github/**/*.yml  text eol=lf
+.github/**/*.yaml text eol=lf
+
+## Git
+.gitignore        text eol=lf
+.gitattributes    text eol=lf
+.gitmodules       text eol=lf
+.gitconfig        text eol=lf
+.mailmap          text eol=lf
+
+## Editor configs
+.editorconfig     text eol=lf
+.vscode/*.json    text eol=lf
+.idea/**          text eol=lf
+*.sublime-*       text eol=lf
+.project          text eol=lf
+.classpath        text eol=lf
+
+## Linters & Formatters
+.eslintrc         text eol=lf
+.eslintrc.*       text eol=lf
+.eslintignore     text eol=lf
+.stylelintrc      text eol=lf
+.stylelintrc.*    text eol=lf
+.htmlhintrc       text eol=lf
+.prettierrc       text eol=lf
+.prettierrc.*     text eol=lf
+.prettierignore   text eol=lf
+.csslintrc        text eol=lf
+.jshintrc         text eol=lf
+.jscsrc           text eol=lf
+.rubocop.yml      text eol=lf
+.rubocop.yaml     text eol=lf
+.flake8           text eol=lf
+.pylintrc         text eol=lf
+.pycodestyle      text eol=lf
+tox.ini           text eol=lf
+.isort.cfg        text eol=lf
+.bandit           text eol=lf
+.mypy.ini         text eol=lf
+.black.toml       text eol=lf
+.php_cs           text eol=lf
+.php_cs.dist      text eol=lf
+.php-cs-fixer.php text eol=lf
+.php-cs-fixer.dist.php text eol=lf
+psalm.xml         text eol=lf
+phpstan.neon      text eol=lf
+phpunit.xml       text eol=lf
+.swiftlint.yml    text eol=lf
+
+## Node.js
+.npmrc            text eol=lf
+.npmignore        text eol=lf
+.nvmrc            text eol=lf
+.node-version     text eol=lf
+.yarnrc           text eol=lf
+.pnpmfile.cjs     text eol=lf
+
+## Python
+.python-version   text eol=lf
+.pypirc           text eol=lf
+MANIFEST.in       text eol=lf
+pylintrc          text eol=lf
+.coveragerc       text eol=lf
+*.ipynb           text eol=lf
+
+## Anaconda/Conda
+environment.yml   text eol=lf
+environment.yaml  text eol=lf
+environment-*.yml text eol=lf
+environment-*.yaml text eol=lf
+conda.yml         text eol=lf
+conda.yaml        text eol=lf
+.condarc          text eol=lf
+meta.yaml         text eol=lf
+construct.yaml    text eol=lf
+*.conda           binary
+conda-lock.yml    text eol=lf -diff
+environment.lock.yml text eol=lf -diff
+pinned            text eol=lf
+conda-meta/**     text eol=lf
+
+## Ruby
+.ruby-version     text eol=lf
+.ruby-gemset      text eol=lf
+.rvmrc            text eol=lf
+.rspec            text eol=lf
+.rubocop.yml      text eol=lf
+.rubocop.yaml     text eol=lf
+
+## Rust
+.rustfmt.toml     text eol=lf
+.cargo/config     text eol=lf
+.cargo/config.toml text eol=lf
+clippy.toml       text eol=lf
+rust-toolchain    text eol=lf
+rust-toolchain.toml text eol=lf
+
+## Java
+.mvn/wrapper/maven-wrapper.properties text eol=lf
+mvnw              text eol=lf
+gradlew           text eol=lf
+
+## Heroku
+Procfile          text eol=lf
+.slugignore       text eol=lf
+
+## Certificates and Keys (handle with care in repos!)
+*.pem             text eol=lf
+*.key             text eol=lf
+*.crt             text eol=lf
+*.cert            text eol=lf
+*.cer             text eol=lf
+*.csr             text eol=lf
+*.der             binary
+*.p7b             binary
+*.p12             binary
+*.pfx             binary
+*.jks             binary
+
+## RC files (generic)
+*.*rc             text eol=lf
+
+## Ignore files (generic)
+*.*ignore         text eol=lf
+
+## Web Assets
+*.map             text -diff
+*.min.js          text -diff
+*.min.css         text -diff
+
+## Graphics
+*.ai              binary
+*.bmp             binary
+*.eps             binary
+*.gif             binary
+*.gifv            binary
+*.ico             binary
+*.jng             binary
+*.jp2             binary
+*.jpeg            binary
+*.jpg             binary
+*.jpx             binary
+*.jxr             binary
+*.pdf             binary
+*.png             binary
+*.psb             binary
+*.psd             binary
+*.svg             text
+*.svgz            binary
+*.tif             binary
+*.tiff            binary
+*.wbmp            binary
+*.webp            binary
+*.avif            binary
+*.heic            binary
+*.heif            binary
+*.cur             binary
+*.dds             binary
+*.dng             binary
+*.exr             binary
+*.hdp             binary
+*.raw             binary
+*.tga             binary
+*.xcf             binary
+
+## Audio
+*.kar             binary
+*.m4a             binary
+*.mid             binary
+*.midi            binary
+*.mp3             binary
+*.ogg             binary
+*.ra              binary
+*.wav             binary
+*.wma             binary
+*.aac             binary
+*.flac            binary
+*.ape             binary
+*.wv              binary
+*.m3u             text
+*.m3u8            text
+*.pls             text
+
+## Video
+*.3gp             binary
+*.3gpp            binary
+*.as              binary
+*.asf             binary
+*.avi             binary
+*.fla             binary
+*.flv             binary
+*.m4v             binary
+*.mng             binary
+*.mov             binary
+*.mp4             binary
+*.mpeg            binary
+*.mpg             binary
+*.ogv             binary
+*.swc             binary
+*.swf             binary
+*.webm            binary
+*.wmv             binary
+*.mkv             binary
+*.f4v             binary
+*.f4p             binary
+*.f4a             binary
+*.f4b             binary
+*.vob             binary
+*.mts             binary
+*.m2ts            binary
+*.ts              binary
+*.rm              binary
+*.rmvb            binary
+
+## Archives
+*.7z              binary
+*.bz              binary
+*.bz2             binary
+*.cab             binary
+*.deb             binary
+*.dmg             binary
+*.ear             binary
+*.gem             binary
+*.gz              binary
+*.gzip            binary
+*.iso             binary
+*.jar             binary
+*.lz              binary
+*.lzma            binary
+*.msi             binary
+*.msm             binary
+*.msp             binary
+*.rar             binary
+*.rpm             binary
+*.tar             binary
+*.tgz             binary
+*.war             binary
+*.xz              binary
+*.z               binary
+*.zip             binary
+*.egg             binary
+*.whl             binary
+*.apk             binary
+*.ipa             binary
+*.xpi             binary
+*.vsix            binary
+
+## Fonts
+*.eot             binary
+*.otf             binary
+*.ttf             binary
+*.woff            binary
+*.woff2           binary
+
+## Executables
+*.exe             binary
+*.dll             binary
+*.so              binary
+*.dylib           binary
+*.a               binary
+*.lib             binary
+*.obj             binary
+*.o               binary
+*.ko              binary
+*.elf             binary
+*.app             binary
+*.com             binary
+*.out             binary
+
+## Python bytecode
+*.pyc             binary
+*.pyo             binary
+*.pyd             binary
+__pycache__/      binary
+
+## Java bytecode
+*.class           binary
+
+## .NET bytecode
+*.dll             binary
+*.pdb             binary
+*.mdb             binary
+
+## Documents - Binary
+*.doc             binary
+*.docx            binary
+*.dot             binary
+*.dotx            binary
+*.xls             binary
+*.xlsx            binary
+*.xlsm            binary
+*.xlt             binary
+*.xltx            binary
+*.xltm            binary
+*.ppt             binary
+*.pptx            binary
+*.pptm            binary
+*.pot             binary
+*.potx            binary
+*.potm            binary
+*.pps             binary
+*.ppsx            binary
+*.ppsm            binary
+*.vsd             binary
+*.vsdx            binary
+*.odb             binary
+*.odf             binary
+*.odg             binary
+*.odp             binary
+*.ods             binary
+*.odt             binary
+*.otg             binary
+*.otp             binary
+*.ots             binary
+*.ott             binary
+*.pdf             binary
+*.rtf             binary
+*.epub            binary
+*.mobi            binary
+*.azw             binary
+*.azw3            binary
+*.ps              binary
+
+## Documents - Text
+*.csv             text
+*.tsv             text
+*.tab             text
+
+## Data files
+*.parquet         binary
+*.feather         binary
+*.arrow           binary
+*.avro            binary
+*.orc             binary
+*.msgpack         binary
+*.pickle          binary
+*.pkl             binary
+*.npy             binary
+*.npz             binary
+*.h5              binary
+*.hdf5            binary
+*.he5             binary
+*.h4              binary
+*.hdf4            binary
+*.hdf             binary
+*.mat             binary
+*.sav             binary
+*.zsav            binary
+*.dta             binary
+*.sas7bdat        binary
+*.xpt             binary
+*.rda             binary
+*.rdata           binary
+*.RData           binary
+*.rds             binary
+*.nc              binary
+*.netcdf          binary
+*.cdf             binary
+*.fits            binary
+*.fit             binary
+*.fts             binary
+*.zarr            binary
+*.n5              binary
+*.loom            binary
+*.ann             binary
+*.anndata         binary
+*.mtx             binary
+*.tfrecord        binary
+*.tfrecords       binary
+*.mindrecord      binary
+*.rec             binary
+*.idx             binary
+*.mdb             binary
+*.lmdb            binary
+*.bcolz           binary
+*.blosc           binary
+*.vlen            binary
+*.ftr             binary
+*.fst             binary
+*.ome.tiff        binary
+*.ome.tif         binary
+*.ome.btf         binary
+
+## Model files
+*.pb              binary
+*.pbtxt           text
+*.onnx            binary
+*.onnx.data       binary
+*.caffemodel      binary
+*.prototxt        text
+*.h5              binary
+*.hdf5            binary
+*.mlmodel         binary
+*.mlpackage       binary
+*.tflite          binary
+*.pt              binary
+*.pth             binary
+*.ckpt            binary
+*.ckpt.*          binary
+*.safetensors     binary
+*.bin             binary
+*.gguf            binary
+*.ggml            binary
+*.pdparams        binary
+*.pdmodel         binary
+*.pdopt           binary
+*.nb              binary
+*.dnn             binary
+*.cmf             binary
+*.pmml            text
+*.pkl             binary
+*.pickle          binary
+*.joblib          binary
+*.skops           binary
+*.cbm             binary
+*.lgb             binary
+*.xgb             binary
+*.model           binary
+*.weights         binary
+*.params          binary
+*.mar             binary
+*.torchscript     binary
+*.tf              binary
+*.tfl             binary
+*.tfevents.*      binary
+*.keras           binary
+*.engine          binary
+*.state           binary
+*.task            binary
+*.bk              binary
+*.backup          binary
+
+## Other
+*.log             text
+*.bak             text
+*.tmp             text
+*.temp            text
+*.old             text
+*.orig            text
+*.pid             text
+*.seed            text
+*.svg             text
+.htaccess         text
+*.webmanifest     text
+robots.txt        text
+sitemap.xml       text
+*.rss             text
+*.atom            text
+
+## Special handling
+*.patch           -text
+*.diff            -text
+
+## OS Files
+.DS_Store         binary
+Thumbs.db         binary
+desktop.ini       text
+*.lnk             binary
+
+## IDE/Editor specific
+*.iml             text
+*.ipr             text
+*.iws             text
+.vscode-server/** binary
+*.code-workspace  text
+*.kate-swp        binary
+*~                binary
+*.swp             binary
+*.swo             binary
+
+## Backup files
+*.backup          binary
+*.bak             binary
+*.gho             binary
+*.ori             binary
+*.save            binary
+*.orig            binary
+
+## Package files
+node_modules/**   binary
+vendor/**         -text -diff
+bower_components/** binary
+jspm_packages/**  binary
+packages/**       -text -diff
+.yarn/**          binary
+.pnp.*            binary
