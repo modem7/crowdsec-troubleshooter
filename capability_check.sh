@@ -12,7 +12,8 @@
 # nothing in this tool is meaningful without it.
 
 set -uo pipefail
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 if [[ -z "${CROWDSEC_LAPI_URL:-}" ]]; then
   crit "CROWDSEC_LAPI_URL is not set — this is the one thing this tool actually requires."

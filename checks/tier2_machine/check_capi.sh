@@ -11,7 +11,8 @@
 # silently dropped, so the open question doesn't get lost.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 warn "check_capi.sh is a known placeholder — CAPI status may not be reachable via LAPI HTTP at all"
 info "See the comment at the top of this file. Needs verification before this check can be trusted."

@@ -10,7 +10,8 @@
 # failure mode and say so, rather than just reporting a generic timeout.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 METRICS_URL="${CROWDSEC_METRICS_URL:-${CROWDSEC_LAPI_URL/:8080/:6060}}"
 POLL_GAP_SECONDS="${METRICS_POLL_GAP:-10}"

@@ -7,7 +7,8 @@
 # tool, generalized to apply to anyone's compose file, not just one.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 COMPOSE_FILE="/mnt/compose/docker-compose.yml"
 
@@ -30,7 +31,8 @@ has_proxy="$(grep -ic 'socket-proxy\|tecnativa' "$COMPOSE_FILE" || true)"
 
 if [[ "$sock_count" -gt 0 ]]; then
   if [[ "$has_proxy" -eq 0 ]]; then
-    warn "${sock_count} service(s) mount docker.sock directly, with no socket-proxy in this file"
+    warn "${sock_count} service(s) mount docker.sock directly, with no socket-proxy in this file:"
+    echo "$sock_services" | sed 's/^/     - /'
     info "Reminder: a :ro bind mount does NOT restrict which Docker API calls can be made over the"
     info "socket — it only stops the container rewriting the socket file itself. Consider"
     info "tecnativa/docker-socket-proxy to actually scope what each service can do."

@@ -8,7 +8,8 @@
 # acquis.yaml / acquis.d/*, nothing more.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 ACQUIS_PATH="/mnt/crowdsec/acquis.yaml"
 ACQUIS_DIR="/mnt/crowdsec/acquis.d"

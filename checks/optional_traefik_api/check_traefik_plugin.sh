@@ -12,7 +12,8 @@
 # CrowdSec's LAPI. Flagged clearly rather than silently bundled in.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 require_jq
 
 if [[ "${HAS_TRAEFIK_API:-false}" != true ]]; then

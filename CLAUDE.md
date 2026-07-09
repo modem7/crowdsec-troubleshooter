@@ -24,14 +24,16 @@ actually working on it.
 
 ## Before considering any check "done"
 
-1. Run `bash -n` on it — syntax errors should never reach a commit.
-2. Actually run it against a mock server (see the smoke-test pattern used
-   for `check_lapi_alive.sh` and `check_metrics_liveness.sh` in git history
-   — spin up a throwaway `python3 -m http.server`-style mock, don't just
-   read the code and assume it's correct). Two real bugs were caught this
-   way already (see the second commit) — assume more exist until tested.
-3. Test both the happy path AND the unreachable/failure path explicitly.
-   A check that only handles success isn't finished.
+1. Run `bash -n` on it — syntax errors should never reach a commit. CI
+   enforces this, but don't rely on CI to catch what you can catch locally.
+2. Run `shellcheck --severity=warning` against it. `.shellcheckrc` handles
+   the dynamic-source-path noise; a real warning is a real warning.
+3. Add a `bats` test in `tests/` and actually run it — see the existing
+   `tests/*.bats` files for the mock-server pattern (`tests/test_helper.bash`).
+   Two real bugs were only caught this way, not by reading the code — assume
+   more exist until tested. Test both the happy path AND the failure path.
+4. `bash tests/*.bats` and `docker build .` locally before pushing — CI runs
+   the same checks, but a red CI run on a solo project is just wasted time.
 
 ## Open items — check DESIGN.md before "fixing" these
 

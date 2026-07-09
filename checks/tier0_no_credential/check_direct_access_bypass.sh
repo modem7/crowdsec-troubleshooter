@@ -10,7 +10,8 @@
 # but proves the actual root cause behind that class of finding.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 if [[ "${HAS_BYPASS_URLS:-false}" != true ]]; then
   skip "Checking whether a protected dashboard can be reached directly, bypassing auth" \

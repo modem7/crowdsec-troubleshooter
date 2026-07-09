@@ -1,0 +1,6 @@
+# Project-wide shellcheck config. Without this, every dynamic `source
+# "$(dirname "$0")/../../lib/common.sh"` line reports SC1091 info-level
+# noise even though the `# shellcheck source=` directive above each one
+# already tells shellcheck exactly where to look — external-sources=true
+# is what actually makes it follow those directives.
+external-sources=true

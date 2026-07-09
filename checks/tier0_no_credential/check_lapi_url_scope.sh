@@ -10,7 +10,8 @@
 # visible to any container) — this only flags the pattern, not the exposure.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 host="$(echo "$CROWDSEC_LAPI_URL" | sed -E 's#^https?://##; s#[:/].*##')"
 

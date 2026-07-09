@@ -8,7 +8,8 @@
 # scenario name for anything not in the lookup table below.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 require_jq
 
 usage() { echo "Usage: check_ip.sh <ip-address>"; exit 2; }
@@ -33,7 +34,6 @@ translate_scenario() {
     *http-sensitive-files*) echo "probing for sensitive files (.env, .git, etc.)" ;;
     *ssh-bf*)               echo "repeated failed SSH logins" ;;
     *http-dos*)             echo "excessive request rate (possible DoS)" ;;
-    *http-crawl-non_statics*) echo "aggressive crawling of non-static paths" ;;
     *) echo "" ;;
   esac
 }

@@ -1,5 +1,7 @@
 # crowdsec-troubleshooter
 
+[![CI](https://github.com/modem7/crowdsec-troubleshooter/actions/workflows/ci.yml/badge.svg)](https://github.com/modem7/crowdsec-troubleshooter/actions/workflows/ci.yml)
+
 A small, unprivileged, run-once Docker tool for diagnosing CrowdSec + Traefik
 setups — a wellness check, an IP block checker, and (optionally) a live
 "does blocking actually work" test. No daemon, no `docker.sock`, no host
@@ -61,6 +63,33 @@ or polled by Uptime Kuma, gets the same outcome with none of the downside.
 A daemon means a machine credential (create/delete real bans) sitting live
 in a running process indefinitely — the one architecture choice that would
 undo the whole credential-hygiene design of this tool for no functional gain.
+
+## Testing / CI
+
+Every push and PR runs: `bash -n` syntax checks, ShellCheck, a set of
+convention checks specific to this repo (every script executable and
+starting with `set -uo pipefail`; every `setup/add_*`/`register_*` has a
+matching `remove_*`/`unregister_*`), Hadolint against the Dockerfile,
+YAML/schema validation of the example compose files, a Gitleaks secret
+scan, a `bats` regression/behavior test suite, and finally a Docker build
+plus smoke test against a mock LAPI.
+
+Two real bugs were caught during development by actually running the code
+against mock servers rather than just reading it — see `tests/lib_common.bats`
+and `tests/check_metrics_liveness.bats` for the regression tests that now
+cover both, and `DESIGN.md` for what they were. A third, more structural bug
+(fragile `$0`-based path resolution that only worked by coincidence when
+scripts were executed rather than sourced) was caught by the test suite
+itself failing when tests legitimately `source`d a script directly — fixed
+project-wide by switching to `${BASH_SOURCE[0]}`.
+
+Run locally the same way CI does:
+
+```bash
+shellcheck --severity=warning $(find . -name "*.sh")
+bats tests/*.bats
+docker build -t crowdsec-troubleshooter:local .
+```
 
 ## Status
 

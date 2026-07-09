@@ -7,7 +7,8 @@
 # this is the one thing LAPI has to answer for literally anyone.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 status="$(http_status "${CROWDSEC_LAPI_URL}/health")"
 

@@ -9,7 +9,7 @@
 # needs before deciding to set it up.
 
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "${BASH_SOURCE[0]}")" || { echo "Failed to cd into script directory — this shouldn't happen inside the container"; exit 1; }
 source lib/common.sh
 
 # ---- capability detection, always first ----

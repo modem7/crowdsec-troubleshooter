@@ -8,7 +8,8 @@
 # at the actual place to look instead of leaving that as a silent gap.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 LOG_PATH="/mnt/crowdsec/crowdsec.log"
 

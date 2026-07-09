@@ -15,7 +15,8 @@
 # checked against a real deployment.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 require_jq
 
 usage() { echo "Usage: test_appsec_probe.sh --target-url <url>"; exit 2; }

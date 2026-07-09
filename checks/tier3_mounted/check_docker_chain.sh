@@ -12,7 +12,8 @@
 # duplicating that privilege in the troubleshooter itself.
 
 set -uo pipefail
-source "$(dirname "$0")/../../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 CONFIG_PATH="/mnt/bouncer/firewall-bouncer.yaml"
 LOG_PATH="/mnt/bouncer/firewall-bouncer.log"
