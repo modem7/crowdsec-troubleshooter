@@ -52,3 +52,26 @@ jobs:
             ghcr.io/modem7/crowdsec-troubleshooter:${{ github.event.workflow_run.head_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Everything below tests the actual published artifact, not a locally
+      # built copy — only possible now that there's something real to pull.
+      # Closes a real gap: ci.yml's docker-build job proves the source
+      # builds correctly, but nothing previously verified that what lands
+      # on a registry after a real push is the same thing and actually works.
+
+      - name: Verify multi-arch manifest actually contains both platforms
+        run: |
+          docker buildx imagetools inspect ghcr.io/modem7/crowdsec-troubleshooter:latest | tee /tmp/manifest.txt
+          grep -q "linux/amd64" /tmp/manifest.txt || { echo "::error::amd64 missing from published manifest"; exit 1; }
+          grep -q "linux/arm64" /tmp/manifest.txt || { echo "::error::arm64 missing from published manifest"; exit 1; }
+
+      - name: Pull the just-published image fresh and verify it runs
+        run: |
+          docker pull ghcr.io/modem7/crowdsec-troubleshooter:${{ github.event.workflow_run.head_sha }}
+          set +e
+          output=$(docker run --rm ghcr.io/modem7/crowdsec-troubleshooter:${{ github.event.workflow_run.head_sha }} 2>&1)
+          code=$?
+          set -e
+          echo "$output"
+          [[ $code -ne 0 ]] || { echo "::error::Expected non-zero exit with no CROWDSEC_LAPI_URL set"; exit 1; }
+          [[ "$output" == *"CROWDSEC_LAPI_URL is not set"* ]] || { echo "::error::Missing expected error message in the PUBLISHED image"; exit 1; }
