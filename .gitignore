@@ -6,3 +6,6 @@ firewall-bouncer.log
 *.local.yml
 
 .DS_Store
+
+# Claude Code local settings
+.claude/
