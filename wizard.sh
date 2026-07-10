@@ -234,7 +234,13 @@ extract_service_block() {
 }
 
 # extract_yaml_list <key> — reads a block on stdin, prints `- item` list
-# entries under <key>: (e.g. ports:), quotes stripped.
+# entries under <key>: (e.g. ports:), quotes stripped. Trailing ` #comment`
+# is also stripped, but only for unquoted items — a quoted value (a
+# Traefik label's rule, say) may legitimately contain a literal `#`, and
+# stripping there would corrupt it rather than clean it up. Real-world
+# compose files commenting each published port (`8082:8080 # Dashboard`)
+# is common enough that this isn't a hypothetical: an unstripped comment
+# broke `$2==8080`-style port matching entirely, silently.
 extract_yaml_list() {
   local key="$1"
   awk -v key="$key" '
@@ -247,6 +253,7 @@ extract_yaml_list() {
         if ($0 ~ /^[[:space:]]*-[[:space:]]/ && indent > key_indent) {
           item = $0
           sub(/^[[:space:]]*-[[:space:]]*/, "", item)
+          if (item !~ /^"/) { sub(/[[:space:]]+#.*$/, "", item) }
           gsub(/^"+|"+$/, "", item)
           print item
         } else if (indent <= key_indent && $0 !~ /^[[:space:]]*$/) {
@@ -288,6 +295,47 @@ extract_yaml_child_keys() {
 extract_env_value() {
   local key="$1"
   grep -oE "^[[:space:]]*-?[[:space:]]*${key}=[^ #]*" | sed -E "s/^[[:space:]]*-?[[:space:]]*${key}=//" | head -1
+}
+
+# extract_label_value <label-key-regex> — reads label lines on stdin (one
+# per line, already quote-stripped by extract_yaml_list labels), prints the
+# value after the first '=' for the first line whose key matches. Traefik
+# labels are dotted (traefik.http.routers.<name>.rule=...), so the caller
+# passes a regex with dots escaped rather than a plain key.
+extract_label_value() {
+  local key_regex="$1"
+  # `|| true`: grep exits 1 on "no matching label", a completely normal,
+  # expected outcome here (not every router has every label) — but under
+  # `set -o pipefail` (which the caller has active), that 1 becomes this
+  # pipeline's own exit status, and callers assigning the result via plain
+  # `var="$(extract_label_value ...)"` would have THAT non-zero status
+  # trip `set -e` immediately, wherever it happens to be enabled (bats
+  # test bodies run under -e; wizard.sh itself doesn't, but this function
+  # has no way to know which context it's called from). Caught by a bats
+  # test for the no-match path specifically — passed on a manual run
+  # without -e, only failed under bats, which is exactly the gap a
+  # grep-based "search, might not find" helper needs to be safe under.
+  grep -E "^${key_regex}=" | sed -E "s/^${key_regex}=//" | head -1 || true
+}
+
+# resolve_compose_vars <text> <env-file> — substitutes $VAR/${VAR}
+# references in <text> using values found in <env-file> (Compose's own
+# convention: a .env file in the same directory as the compose file,
+# auto-loaded by `docker compose` itself, not something this tool invents).
+# Anything not found in the file is left exactly as-is — an unresolved
+# `$DOMAINNAME` in a suggested URL is a clearer, more honest signal to fill
+# it in by hand than silently guessing a value would be.
+resolve_compose_vars() {
+  local text="$1" env_file="$2"
+  [[ -r "$env_file" ]] || { echo "$text"; return; }
+  local var val result="$text"
+  for var in $(echo "$text" | grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*\}?' | tr -d '${}' | sort -u || true); do
+    val="$(grep -E "^${var}=" "$env_file" | head -1 | sed -E "s/^${var}=//" || true)"
+    [[ -z "$val" ]] && continue
+    result="${result//\$\{${var}\}/$val}"
+    result="${result//\$${var}/$val}"
+  done
+  echo "$result"
 }
 
 parse_compose() {
@@ -345,6 +393,85 @@ parse_compose() {
   if extract_service_block "$file" 'image:.*crowdsecurity/cloudflare-worker-bouncer' >/dev/null 2>&1; then
     note "Found a Cloudflare Worker bouncer service — this tool has no check tied to it yet, nothing to configure there."
   fi
+
+  # `image: traefik:` (with the colon) specifically, not
+  # `traefik-crowdsec-bouncer` — that one's already handled above as a
+  # completely different service.
+  local tf_block
+  if tf_block="$(extract_service_block "$file" 'image:[[:space:]]*"?traefik:')"; then
+    note "Found a Traefik service in ${file}"
+    local svc_name ports cmds labels
+    svc_name="$(echo "$tf_block" | head -1 | sed -E 's/^[[:space:]]*//; s/:.*//')"
+    ports="$(echo "$tf_block" | extract_yaml_list ports)"
+    cmds="$(echo "$tf_block" | extract_yaml_list command)"
+    labels="$(echo "$tf_block" | extract_yaml_list labels)"
+
+    # The dashboard/API router is identifiable by Traefik's own convention
+    # regardless of what the operator named it: whichever router's
+    # `service=` points at the special built-in `api@internal` service IS
+    # the dashboard. Everything else in this file (arbitrary app routers)
+    # is too ambiguous to guess a security-check target from safely.
+    local dash_router=""
+    # `|| true`: no dashboard router is a normal, expected outcome (most
+    # compose files won't have one) — see extract_label_value's comment
+    # above for why an unguarded grep here is a real bug under `set -e`,
+    # not just theoretical: this exact line is what a bats regression test
+    # for the no-dashboard-router path caught failing.
+    dash_router="$(echo "$labels" | grep -E '\.service=api@internal$' | sed -E 's/^traefik\.http\.routers\.([^.]+)\.service=api@internal$/\1/' | head -1 || true)"
+
+    local api_port=""
+    if [[ -n "$dash_router" ]]; then
+      local entrypoints_label first_ep rule host_expr scheme resolved_host env_file
+      entrypoints_label="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.entrypoints")"
+      first_ep="${entrypoints_label%%,*}"
+      if [[ -n "$first_ep" ]]; then
+        api_port="$(echo "$cmds" | grep -iE "^--entrypoints\\.${first_ep}\\.address=" | sed -E 's/.*:([0-9]+).*/\1/' | head -1 || true)"
+      fi
+
+      rule="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.rule")"
+      if [[ "$rule" == *"Host("* ]]; then
+        host_expr="$(echo "$rule" | sed -E 's/.*Host\(`?([^`)]*)`?\).*/\1/')"
+        env_file="$(dirname "$file")/.env"
+        resolved_host="$(resolve_compose_vars "$host_expr" "$env_file")"
+        scheme="http"; [[ "$first_ep" == *https* ]] && scheme="https"
+        COMPOSE[TRAEFIK_PROTECTED_URL]="${scheme}://${resolved_host}"
+        if [[ "$resolved_host" == *'$'* ]]; then
+          warn "TRAEFIK_PROTECTED_URL suggestion (${scheme}://${resolved_host}) still has an unresolved variable — no .env found next to ${file} with a matching value (or it's set some other way: shell export, host env, a different .env location). Fill it in by hand."
+        fi
+      fi
+    else
+      note "No dashboard router (service=api@internal label) found in the Traefik service — TRAEFIK_PROTECTED_URL/TRAEFIK_DIRECT_URL need a specific target this tool can't guess safely, skipping both."
+    fi
+    api_port="${api_port:-8080}"
+
+    # TRAEFIK_API_URL and TRAEFIK_DIRECT_URL are the same internal address
+    # here on purpose: both point at Traefik's own dashboard/API endpoint —
+    # one confirms the plugin bouncer is registered, the other is what
+    # TRAEFIK_PROTECTED_URL gets compared against for the auth-bypass check.
+    # Always http:// regardless of the public router's scheme — this is the
+    # container's own internal listener, never double-TLS-wrapped.
+    local api_host_port
+    api_host_port="$(echo "$ports" | awk -F: -v p="$api_port" '$2==p {print $1}' | head -1)"
+    if [[ -n "$api_host_port" && -n "$host_ip" ]]; then
+      COMPOSE[TRAEFIK_API_URL]="http://${host_ip}:${api_host_port}"
+      if [[ -n "$dash_router" ]]; then COMPOSE[TRAEFIK_DIRECT_URL]="http://${host_ip}:${api_host_port}"; fi
+    else
+      COMPOSE[TRAEFIK_API_URL]="http://${svc_name}:${api_port}"
+      if [[ -n "$dash_router" ]]; then COMPOSE[TRAEFIK_DIRECT_URL]="http://${svc_name}:${api_port}"; fi
+      if [[ -z "$api_host_port" ]]; then warn "No published port found for Traefik's API/dashboard port (${api_port}) — suggesting the internal service name instead. That only resolves if this wizard's docker run joins the same docker network."; fi
+    fi
+  fi
+  # Explicit, not incidental: a bare `cond && action` as the last statement
+  # in a branch leaks `cond`'s own exit status as this function's return
+  # value when the condition is false (unlike `if cond; then action; fi`,
+  # which correctly returns 0). Two such statements above used to be exactly
+  # that shape — fixed to real if/fi, but this return is kept anyway as a
+  # guarantee independent of whichever branch happens to execute last, same
+  # spirit as troubleshoot.sh's explicit tier_status tracking for the same
+  # class of bug. Caught by a test asserting the no-dashboard-router path
+  # (no api@internal label found) still leaves parse_compose reporting
+  # success even though it deliberately suggests nothing for that case.
+  return 0
 }
 
 # =====================================================================
