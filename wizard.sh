@@ -1,0 +1,441 @@
+#!/usr/bin/env bash
+# wizard.sh — interactive host-side helper for crowdsec-troubleshooter.
+#
+# Linux only (relies on `hostname -I` / `ip route` for LAN-IP detection —
+# Windows users can open an issue if they need this). Runs directly on the
+# Docker host, NOT inside the troubleshooter's own --rm container: it needs
+# a real TTY to prompt, and has to persist a credentials file across runs
+# *before* `docker run` is ever invoked, so it can't live inside a one-shot
+# container.
+#
+# Priority for every value it asks about: a currently-exported shell env
+# var wins, then a previously-saved value from the credentials file, then a
+# docker-compose.yml-derived suggestion, then blank. Nothing is ever
+# silently overwritten — every prompt shows its resolved default and a
+# blank Enter keeps it.
+#
+# Compose parsing is a best-effort regex/awk heuristic, same spirit as
+# check_lapi_url_scope.sh's heuristics — it suggests values, it never
+# claims certainty, and a failed parse degrades to asking normally rather
+# than blocking anything.
+
+set -uo pipefail
+
+IMAGE_NAME="${WIZARD_IMAGE:-modem7/crowdsec-troubleshooter}"
+CREDS_FILE="./.crowdsec-troubleshooter.env"
+COMPOSE_FILE=""
+ACTION=""
+ACTION_ARG=""
+
+usage() {
+  cat <<'EOF'
+Usage: wizard.sh [--file <credentials-file>] [--compose <docker-compose.yml>] [action]
+
+Actions:
+  wellness                  Tier-0 wellness check (default if omitted)
+  check-ip <ip>              Look up an IP's ban status (needs a bouncer key)
+  live-test <target-url>     Prove blocking works end-to-end (needs a machine credential)
+
+Examples:
+  ./wizard.sh
+  ./wizard.sh --compose ./docker-compose.yml wellness
+  ./wizard.sh check-ip 198.51.100.23
+  ./wizard.sh live-test https://your-service.example.com
+
+Re-run any time — values you've already entered are reused as defaults
+from ./.crowdsec-troubleshooter.env (override the path with --file).
+EOF
+  exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --file) CREDS_FILE="$2"; shift 2 ;;
+    --compose) COMPOSE_FILE="$2"; shift 2 ;;
+    wellness) ACTION="wellness"; shift ;;
+    check-ip) ACTION="check-ip"; ACTION_ARG="${2:-}"; shift $(( $# >= 2 ? 2 : 1 )) ;;
+    live-test) ACTION="live-test"; ACTION_ARG="${2:-}"; shift $(( $# >= 2 ? 2 : 1 )) ;;
+    -h|--help) usage ;;
+    *) echo "Unknown argument: $1"; usage ;;
+  esac
+done
+
+# ---- output helpers — standalone, this runs on the host so it can't
+# source lib/common.sh (that's built for inside the container) ----
+note() { printf '\033[36m→\033[0m %s\n' "$*"; }
+warn() { printf '\033[33m!\033[0m %s\n' "$*"; }
+
+# ---- prompt helpers ----
+# `local -n` (nameref) rather than `printf -v "$1" ...`: both work for
+# writing into the caller's variable, but shellcheck understands namerefs
+# and can trace the resulting assignment — with printf -v it can't, so
+# every caller's result variable (lapi_url, lapi_key, m_login, ...) shows
+# up as a false-positive SC2154 "referenced but not assigned".
+prompt() {
+  local -n __result="$1"
+  local label="$2" default="$3"
+  local input
+  if [[ -n "$default" ]]; then
+    read -r -p "${label} [${default}]: " input
+  else
+    read -r -p "${label}: " input
+  fi
+  __result="${input:-$default}"
+}
+
+# Hidden input for secrets. If a default already exists (from the shell
+# env or a saved file), pressing Enter keeps it WITHOUT echoing it back —
+# only a freshly typed value is ever shown as asterisk-free hidden input.
+prompt_secret() {
+  local -n __result="$1"
+  local label="$2" default="$3"
+  local input suffix="[hidden input; Enter for stdin]"
+  [[ -n "$default" ]] && suffix="[press Enter to keep saved value, or type a new one, hidden]"
+  read -r -s -p "${label} ${suffix}: " input
+  echo
+  __result="${input:-$default}"
+}
+
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '%s' "$s"
+}
+
+# ---- credentials file I/O ----
+declare -A PREV=()
+load_creds_file() {
+  local file="$1"
+  [[ -r "$file" ]] || return 0
+  while IFS='=' read -r key value; do
+    [[ -z "$key" || "$key" == \#* ]] && continue
+    PREV["$key"]="$value"
+  done < "$file"
+}
+
+declare -A COMPOSE=()
+
+# resolve_default <VARNAME> — env var > saved file value > compose
+# suggestion > blank, in that order.
+resolve_default() {
+  # Deliberately two separate `local` statements: `local var="$1"
+  # env_val="${!var:-}"` on one line fails at runtime with "invalid
+  # indirect expansion" — bash evaluates the indirect reference before
+  # `var` is fully in scope when both are declared in the same `local`
+  # command. Caught by actually running this, not by reading it.
+  local var="$1"
+  local env_val="${!var:-}"
+  if [[ -n "$env_val" ]]; then echo "$env_val"; return; fi
+  if [[ -n "${PREV[$var]:-}" ]]; then echo "${PREV[$var]}"; return; fi
+  if [[ -n "${COMPOSE[$var]:-}" ]]; then echo "${COMPOSE[$var]}"; return; fi
+  echo ""
+}
+
+# ---- host IP detection — turns a published-port suggestion into a usable
+# URL. Best effort: falls back to leaving it blank for the user to fill in
+# rather than guessing wrong. ----
+detect_host_ip() {
+  local ip
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  if [[ -z "$ip" ]]; then
+    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}')"
+  fi
+  echo "$ip"
+}
+
+# ---- docker-compose parsing helpers ----
+# extract_service_block <file> <image-regex> — prints the full indented
+# block for whichever service's `image:` line matches, by finding the
+# nearest preceding same-or-lower-indent `key:` line as the block start,
+# and the next such line as the block end. Fails (exit 1) if no match.
+extract_service_block() {
+  local file="$1" pattern="$2"
+  awk -v pat="$pattern" '
+    {
+      line[NR] = $0
+      n = match($0, /[^ ]/)
+      indent = (n > 0) ? n - 1 : 0
+      if ($0 ~ /^[[:space:]]*[A-Za-z0-9_.-]+:[[:space:]]*$/) {
+        kc++
+        key_line[kc] = NR
+        key_indent[kc] = indent
+      }
+      if (!found && $0 ~ pat) { found = 1; found_line = NR }
+    }
+    END {
+      if (!found) exit 1
+      start = 1; start_indent = 0
+      for (i = 1; i <= kc; i++) {
+        if (key_line[i] < found_line) { start = key_line[i]; start_indent = key_indent[i] }
+        else break
+      }
+      end = NR
+      for (i = 1; i <= kc; i++) {
+        if (key_line[i] > start && key_indent[i] <= start_indent) { end = key_line[i] - 1; break }
+      }
+      for (i = start; i <= end; i++) print line[i]
+    }
+  ' "$file"
+}
+
+# extract_yaml_list <key> — reads a block on stdin, prints `- item` list
+# entries under <key>: (e.g. ports:), quotes stripped.
+extract_yaml_list() {
+  local key="$1"
+  awk -v key="$key" '
+    BEGIN { collecting = 0 }
+    {
+      n = match($0, /[^ ]/)
+      indent = (n > 0) ? n - 1 : 0
+      if ($0 ~ ("^[[:space:]]*" key ":[[:space:]]*$")) { collecting = 1; key_indent = indent; next }
+      if (collecting) {
+        if ($0 ~ /^[[:space:]]*-[[:space:]]/ && indent > key_indent) {
+          item = $0
+          sub(/^[[:space:]]*-[[:space:]]*/, "", item)
+          gsub(/^"+|"+$/, "", item)
+          print item
+        } else if (indent <= key_indent && $0 !~ /^[[:space:]]*$/) {
+          collecting = 0
+        }
+      }
+    }
+  '
+}
+
+# extract_yaml_child_keys <key> — reads a block on stdin, prints the
+# immediate child key names under <key>: for mapping-style YAML (e.g.
+# `networks:` with per-network config, not a plain `- name` list).
+extract_yaml_child_keys() {
+  local key="$1"
+  awk -v key="$key" '
+    BEGIN { collecting = 0; child_indent = -1 }
+    {
+      n = match($0, /[^ ]/)
+      indent = (n > 0) ? n - 1 : 0
+      if ($0 ~ ("^[[:space:]]*" key ":[[:space:]]*$")) { collecting = 1; key_indent = indent; next }
+      if (collecting) {
+        if (indent <= key_indent && $0 !~ /^[[:space:]]*$/) { collecting = 0; next }
+        if (child_indent == -1 && $0 ~ /^[[:space:]]*[A-Za-z0-9_.-]+:/) child_indent = indent
+        if (indent == child_indent && $0 ~ /^[[:space:]]*[A-Za-z0-9_.-]+:/) {
+          k = $0
+          sub(/^[[:space:]]*/, "", k)
+          sub(/:.*/, "", k)
+          print k
+        }
+      }
+    }
+  '
+}
+
+# extract_env_value <key> — reads a block on stdin, prints the value of a
+# literal `- KEY=value` line under environment: (skips ${VAR}-style refs
+# implicitly, since those aren't resolvable from the compose file alone).
+extract_env_value() {
+  local key="$1"
+  grep -oE "^[[:space:]]*-?[[:space:]]*${key}=[^ #]*" | sed -E "s/^[[:space:]]*-?[[:space:]]*${key}=//" | head -1
+}
+
+parse_compose() {
+  local file="$1"
+  [[ -r "$file" ]] || { warn "Can't read compose file: $file"; return 1; }
+
+  local host_ip; host_ip="$(detect_host_ip)"
+  [[ -z "$host_ip" ]] && warn "Couldn't auto-detect this host's LAN IP (hostname -I / ip route both came up empty) — published-port suggestions below will be incomplete; fill the host part in yourself."
+
+  local cs_block
+  if cs_block="$(extract_service_block "$file" 'image:[[:space:]]*"?crowdsecurity/crowdsec"?[[:space:]]*$')"; then
+    note "Found a crowdsecurity/crowdsec service in ${file}"
+    local ports lapi_port metrics_port svc_name
+    ports="$(echo "$cs_block" | extract_yaml_list ports)"
+    lapi_port="$(echo "$ports" | awk -F: '$2==8080 {print $1}' | head -1)"
+    metrics_port="$(echo "$ports" | awk -F: '$2==6060 {print $1}' | head -1)"
+    svc_name="$(echo "$cs_block" | head -1 | sed -E 's/^[[:space:]]*//; s/:.*//')"
+
+    if [[ -n "$lapi_port" && -n "$host_ip" ]]; then
+      COMPOSE[CROWDSEC_LAPI_URL]="http://${host_ip}:${lapi_port}"
+    elif [[ -n "$lapi_port" ]]; then
+      warn "Found LAPI's published port (${lapi_port}) but couldn't detect this host's LAN IP — no suggestion to offer, fill in http://<this-host-ip>:${lapi_port} yourself"
+    else
+      COMPOSE[CROWDSEC_LAPI_URL]="http://${svc_name}:8080"
+      warn "No published port found for the crowdsec service (port 8080 isn't in its ports: list) — suggesting the internal service name instead. That only resolves if this wizard's docker run joins the same docker network: pass --network ${svc_name%%[!a-zA-Z0-9_.-]*} manually, or edit the printed command before it runs."
+    fi
+
+    if [[ -n "$metrics_port" && -n "$host_ip" ]]; then
+      COMPOSE[CROWDSEC_METRICS_URL]="http://${host_ip}:${metrics_port}"
+    fi
+
+    local nets
+    nets="$(echo "$cs_block" | extract_yaml_child_keys networks)"
+    [[ -n "$nets" ]] && note "crowdsec is attached to docker network(s): $(echo "$nets" | tr '\n' ' ')"
+  else
+    warn "No crowdsecurity/crowdsec service found in ${file} — nothing to auto-detect from it. Double check the image: line matches (tags/comments can throw simple pattern matching off)."
+  fi
+
+  local tb_block
+  if tb_block="$(extract_service_block "$file" 'image:.*traefik-crowdsec-bouncer')"; then
+    note "Found a Traefik bouncer service in ${file}"
+    local ports host_port svc_name internal_port
+    ports="$(echo "$tb_block" | extract_yaml_list ports)"
+    host_port="$(echo "$ports" | head -1 | cut -d: -f1)"
+    svc_name="$(echo "$tb_block" | head -1 | sed -E 's/^[[:space:]]*//; s/:.*//')"
+    internal_port="$(echo "$tb_block" | extract_env_value PORT)"
+    internal_port="${internal_port:-8080}"
+    if [[ -n "$host_port" && -n "$host_ip" ]]; then
+      COMPOSE[TRAEFIK_BOUNCER_URL]="http://${host_ip}:${host_port}"
+    else
+      COMPOSE[TRAEFIK_BOUNCER_URL]="http://${svc_name}:${internal_port}"
+    fi
+  fi
+
+  if extract_service_block "$file" 'image:.*crowdsecurity/cloudflare-worker-bouncer' >/dev/null 2>&1; then
+    note "Found a Cloudflare Worker bouncer service — this tool has no check tied to it yet, nothing to configure there."
+  fi
+}
+
+# =====================================================================
+# main flow — guarded so tests can `source` this file to exercise the
+# pure helper functions above (extract_service_block, resolve_default,
+# json_escape, etc.) without triggering interactive prompts or requiring
+# docker to be installed on the machine running the tests.
+# =====================================================================
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+command -v docker >/dev/null 2>&1 || {
+  echo "docker not found on PATH — this wizard launches the container for you, so docker itself needs to be installed and reachable."
+  exit 1
+}
+
+echo "crowdsec-troubleshooter setup wizard"
+echo "─────────────────────────────────────"
+
+if [[ -z "$ACTION" ]]; then
+  echo "What do you want to run?"
+  PS3="Choice: "
+  select choice in "Wellness check (tier 0)" "check-ip <ip>" "live-test <target-url>"; do
+    case "$choice" in
+      "Wellness check (tier 0)") ACTION="wellness"; break ;;
+      "check-ip <ip>") ACTION="check-ip"; prompt ACTION_ARG "IP address to check" ""; break ;;
+      "live-test <target-url>") ACTION="live-test"; prompt ACTION_ARG "Target URL to test blocking against" ""; break ;;
+      *) echo "Pick 1, 2, or 3." ;;
+    esac
+  done
+fi
+
+load_creds_file "$CREDS_FILE"
+[[ -f "$CREDS_FILE" ]] && note "Loaded saved values from ${CREDS_FILE}"
+
+if [[ -z "$COMPOSE_FILE" ]]; then
+  default_compose=""
+  [[ -f ./docker-compose.yml ]] && default_compose="./docker-compose.yml"
+  [[ -f ./docker-compose.yaml ]] && default_compose="./docker-compose.yaml"
+  if [[ -n "$default_compose" ]]; then
+    # A non-empty default means blank Enter always accepts it — that leaves
+    # no way to decline a compose file that just happens to be sitting in
+    # this directory, so 'skip'/'none' are explicit escape hatches rather
+    # than relying on an empty answer to mean "don't use it".
+    prompt COMPOSE_FILE "Found ${default_compose} — use it to suggest values? Enter to accept, type a different path, or 'skip'" "$default_compose"
+    [[ "$COMPOSE_FILE" == "skip" || "$COMPOSE_FILE" == "none" ]] && COMPOSE_FILE=""
+  else
+    prompt COMPOSE_FILE "Path to a docker-compose.yml to auto-detect values from (blank to skip)" ""
+  fi
+fi
+[[ -n "$COMPOSE_FILE" ]] && parse_compose "$COMPOSE_FILE"
+
+declare -A NEW=()
+
+# Vars below (lapi_url, want_traefik, td_url, lapi_key, m_login, m_password,
+# ...) are all assigned by prompt()/prompt_secret() via `local -n` namerefs
+# (see the comment above prompt()) — shellcheck's static analysis doesn't
+# consistently trace that pattern, hence the disable comments at each of
+# their first uses below.
+prompt lapi_url "CROWDSEC_LAPI_URL" "$(resolve_default CROWDSEC_LAPI_URL)"
+# shellcheck disable=SC2154
+NEW[CROWDSEC_LAPI_URL]="$lapi_url"
+
+case "$ACTION" in
+  wellness)
+    prompt metrics_url "CROWDSEC_METRICS_URL (blank lets the tool guess from the LAPI port — only reliable if they share one)" "$(resolve_default CROWDSEC_METRICS_URL)"
+    [[ -n "$metrics_url" ]] && NEW[CROWDSEC_METRICS_URL]="$metrics_url"
+
+    prompt want_traefik "Configure optional Traefik checks too (bouncer-type ID, auth-bypass check)? [y/N]" "N"
+    # shellcheck disable=SC2154
+    if [[ "$want_traefik" =~ ^[Yy] ]]; then
+      prompt tb_url "TRAEFIK_BOUNCER_URL (blank to skip)" "$(resolve_default TRAEFIK_BOUNCER_URL)"
+      [[ -n "$tb_url" ]] && NEW[TRAEFIK_BOUNCER_URL]="$tb_url"
+      prompt ta_url "TRAEFIK_API_URL (blank to skip)" "$(resolve_default TRAEFIK_API_URL)"
+      [[ -n "$ta_url" ]] && NEW[TRAEFIK_API_URL]="$ta_url"
+      prompt tp_url "TRAEFIK_PROTECTED_URL (blank to skip the auth-bypass check)" "$(resolve_default TRAEFIK_PROTECTED_URL)"
+      if [[ -n "$tp_url" ]]; then
+        NEW[TRAEFIK_PROTECTED_URL]="$tp_url"
+        prompt td_url "TRAEFIK_DIRECT_URL" "$(resolve_default TRAEFIK_DIRECT_URL)"
+        # shellcheck disable=SC2154
+        NEW[TRAEFIK_DIRECT_URL]="$td_url"
+      fi
+    fi
+    ;;
+
+  check-ip)
+    [[ -z "$ACTION_ARG" ]] && prompt ACTION_ARG "IP address to check" ""
+    prompt_secret lapi_key "CROWDSEC_LAPI_KEY (read-only bouncer key)" "$(resolve_default CROWDSEC_LAPI_KEY)"
+    # shellcheck disable=SC2154
+    NEW[CROWDSEC_LAPI_KEY]="$lapi_key"
+    ;;
+
+  live-test)
+    [[ -z "$ACTION_ARG" ]] && prompt ACTION_ARG "Target URL to test blocking against" ""
+    prompt host_creds_path "Path to your machine credentials JSON (blank to create one now)" "${PREV[_MACHINE_CREDS_HOST_PATH]:-}"
+    if [[ -z "$host_creds_path" ]]; then
+      note "On your CrowdSec server, run: docker exec crowdsec cscli machines add troubleshooter --auto"
+      note "It prints a Login and Password — enter them below (see setup/register_machine.sh for the full explanation)."
+      prompt m_login "Machine login" ""
+      prompt_secret m_password "Machine password" ""
+      prompt host_creds_path "Save the credentials JSON to" "./.crowdsec-machine.json"
+      # shellcheck disable=SC2154
+      printf '{"login": "%s", "password": "%s"}\n' "$(json_escape "$m_login")" "$(json_escape "$m_password")" > "$host_creds_path"
+      chmod 600 "$host_creds_path"
+      note "Saved to ${host_creds_path} (chmod 600)"
+    fi
+    NEW[_MACHINE_CREDS_HOST_PATH]="$host_creds_path"
+    ;;
+esac
+
+# ---- save credentials file ----
+{
+  for key in "${!NEW[@]}"; do
+    case "$key" in
+      CROWDSEC_*|TRAEFIK_*|_MACHINE_CREDS_HOST_PATH) echo "${key}=${NEW[$key]}" ;;
+    esac
+  done
+} > "$CREDS_FILE"
+chmod 600 "$CREDS_FILE"
+note "Saved to ${CREDS_FILE} (chmod 600). Add it to .gitignore if this directory is a git repo — it can contain a bouncer key or a machine credential path."
+
+# ---- build and launch the actual docker run ----
+DOCKER_ARGS=(run --rm)
+for key in "${!NEW[@]}"; do
+  case "$key" in
+    CROWDSEC_*|TRAEFIK_*) DOCKER_ARGS+=(-e "${key}=${NEW[$key]}") ;;
+  esac
+done
+
+if [[ "$ACTION" == "live-test" ]]; then
+  host_path="${NEW[_MACHINE_CREDS_HOST_PATH]}"
+  host_path_abs="$(cd "$(dirname "$host_path")" 2>/dev/null && pwd)/$(basename "$host_path")"
+  container_path="/creds/$(basename "$host_path")"
+  DOCKER_ARGS+=(-e "CROWDSEC_MACHINE_CREDENTIALS_FILE=${container_path}")
+  DOCKER_ARGS+=(-v "${host_path_abs}:${container_path}:ro")
+fi
+
+DOCKER_ARGS+=("$IMAGE_NAME")
+case "$ACTION" in
+  check-ip) DOCKER_ARGS+=(check-ip "$ACTION_ARG") ;;
+  live-test) DOCKER_ARGS+=(live-test --target-url "$ACTION_ARG") ;;
+esac
+
+echo
+note "Running: docker ${DOCKER_ARGS[*]}"
+echo
+exec docker "${DOCKER_ARGS[@]}"

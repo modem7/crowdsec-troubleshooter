@@ -1,0 +1,41 @@
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec
+    container_name: Crowdsec
+    hostname: Crowsec
+    networks:
+      pihole:
+        ipv4_address: "172.22.0.126"
+    ports:
+      - "19818:8080"
+      - "16934:6060"
+    environment:
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/nginx"
+      GID: "${GID-1000}"
+    volumes:
+      - $USERDIR/Crowdsec/data:/var/lib/crowdsec/data
+    restart: always
+
+  traefik-bouncer:
+    image: ghcr.io/freifunkmuc/traefik-crowdsec-bouncer
+    container_name: Crowdsec-Traefik-Bouncer
+    networks:
+      pihole:
+        ipv4_address: "172.22.0.127"
+    environment:
+      - PUID=$PUID
+      - PGID=$PGID
+      - CROWDSEC_AGENT_HOST=crowdsec:8080
+      - PORT=8080 #Optional
+      - GIN_MODE=release
+    restart: always
+
+  cloudflare-worker-bouncer:
+    image: crowdsecurity/cloudflare-worker-bouncer:latest
+    container_name: Crowdsec-Cloudflare-Worker-Bouncer
+    networks:
+      pihole:
+        ipv4_address: "172.22.0.125"
+    volumes:
+      - $USERDIR/Crowdsec/cloudflare-worker-bouncer/cfg.yaml:/etc/crowdsec/bouncers/crowdsec-cloudflare-worker-bouncer.yaml
+    restart: always
