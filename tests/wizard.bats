@@ -161,6 +161,60 @@ EOF
   [ -z "${COMPOSE[TRAEFIK_DIRECT_URL]:-}" ]
 }
 
+@test "parse_compose warns when the dashboard router has middlewares attached (auth/SSO likely blocks the API check)" {
+  # Real-world case: a router bound only to public HTTPS entrypoints with
+  # an SSO middleware in front of the dashboard. TRAEFIK_API_URL still
+  # gets suggested (it's still the technically-correct address), but the
+  # user needs to know check_bouncer_type.sh's Traefik-API confirmation
+  # can't succeed through an auth-gated router — no URL fixes that.
+  tmpdir="$(mktemp -d)"
+  cat > "${tmpdir}/docker-compose.yml" <<'EOF'
+services:
+  traefik:
+    image: traefik:latest
+    command:
+      - --entryPoints.https-int.address=:443
+    ports:
+      - 443:443
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-rtr.entrypoints=https-int"
+      - "traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAINNAME`)"
+      - "traefik.http.routers.traefik-rtr.service=api@internal"
+      - "traefik.http.routers.traefik-rtr.middlewares=chain-authentik@file"
+EOF
+  declare -gA COMPOSE=()
+  outfile="$(mktemp)"
+  parse_compose "${tmpdir}/docker-compose.yml" > "$outfile"
+  output="$(cat "$outfile")"
+  rm -rf "$tmpdir" "$outfile"
+  [[ "$output" == *"middlewares=chain-authentik@file"* ]]
+  [[ "$output" == *"needs UNauthenticated access"* ]]
+  [ -n "${COMPOSE[TRAEFIK_API_URL]:-}" ]
+}
+
+@test "parse_compose does not warn about middlewares when the dashboard router has none" {
+  tmpdir="$(mktemp -d)"
+  cat > "${tmpdir}/docker-compose.yml" <<'EOF'
+services:
+  traefik:
+    image: traefik:latest
+    command:
+      - --entryPoints.traefik.address=:8080
+    ports:
+      - 8082:8080
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-rtr.entrypoints=traefik"
+      - "traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAINNAME`)"
+      - "traefik.http.routers.traefik-rtr.service=api@internal"
+EOF
+  declare -gA COMPOSE=()
+  output="$(parse_compose "${tmpdir}/docker-compose.yml")"
+  rm -rf "$tmpdir"
+  [[ "$output" != *"middlewares"* ]]
+}
+
 @test "parse_compose resolves \$DOMAINNAME and detects https scheme when a matching .env sits next to the compose file" {
   tmpdir="$(mktemp -d)"
   cat > "${tmpdir}/docker-compose.yml" <<'EOF'
