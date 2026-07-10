@@ -191,6 +191,34 @@ Both `/etc/crowdsec/...` and `/var/log/...` above assume CrowdSec's default
 customized `common.log_dir` in your own `config.yaml`, use that path
 instead.
 
+### Running both a bare-metal and a Dockerized instance side by side
+
+A genuinely common setup, not a fringe case: a bare-metal CrowdSec handling
+host-level detection (SSH brute-force, syslog, journalctl) alongside a
+*separate* Dockerized instance dedicated to Traefik (so its container can
+sit on the same docker network as the Traefik bouncer). These are two
+fully independent CrowdSec engines, each with its own LAPI, its own
+database, its own bouncers — not one deployment split across two places.
+Confirm which is which with `cscli version` (bare-metal) vs
+`docker exec <container> cscli version` (Dockerized) — the `Platform:`
+field in the output says `linux` or `docker` accordingly.
+
+Run this tool **once per instance**, not once total — there's no
+combined-view mode, since they're genuinely separate engines with separate
+answers to "is this one working." Point `CROWDSEC_LAPI_URL` at whichever
+instance you're checking, and use the matching column from the table
+above: bare-metal paths for the apt instance, the original docker-compose
+paths for the containerized one.
+
+One auto-detection gotcha in this exact setup: `wizard.sh`'s
+`detect_crowdsec_compose_file()` looks for a *running Docker container*
+image-matching `crowdsecurity/crowdsec` — with both instances present,
+it'll always find the Dockerized one (the bare-metal instance has no
+container to detect at all), even if you actually want to check the
+bare-metal instance this run. Type `skip` (or `none`) when it prompts
+"use it to suggest values?" to decline the auto-detected compose file and
+enter bare-metal values by hand instead.
+
 ## Why no daemon mode
 
 Considered and deliberately rejected. The only real argument for one is
