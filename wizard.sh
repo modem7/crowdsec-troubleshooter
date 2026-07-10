@@ -18,6 +18,19 @@
 # check_lapi_url_scope.sh's heuristics — it suggests values, it never
 # claims certainty, and a failed parse degrades to asking normally rather
 # than blocking anything.
+#
+# Safe to run as `curl -fsSL <raw-url>/wizard.sh | bash`: every prompt
+# reads from /dev/tty explicitly, not the script's own stdin. Piping a
+# script into `bash` makes bash consume stdin to read the script itself —
+# by the time execution reaches a `read` inside it, stdin is already at
+# EOF, so every prompt would silently receive an empty answer with no
+# error and no visible wait. /dev/tty is the actual controlling terminal,
+# a separate device from stdin, so it stays reachable regardless of what
+# stdin is doing. Verified empirically (not assumed) with a pty-based test
+# simulating exactly this pipe shape. The one case this can't paper over —
+# no controlling terminal at all (e.g. invoked from cron/CI) — is caught
+# explicitly below with one clear error instead of N confusing per-prompt
+# "No such device" failures.
 
 set -uo pipefail
 
@@ -76,9 +89,9 @@ prompt() {
   local label="$2" default="$3"
   local input
   if [[ -n "$default" ]]; then
-    read -r -p "${label} [${default}]: " input
+    read -r -p "${label} [${default}]: " input < /dev/tty
   else
-    read -r -p "${label}: " input
+    read -r -p "${label}: " input < /dev/tty
   fi
   __result="${input:-$default}"
 }
@@ -91,7 +104,7 @@ prompt_secret() {
   local label="$2" default="$3"
   local input suffix="[hidden input; Enter for stdin]"
   [[ -n "$default" ]] && suffix="[press Enter to keep saved value, or type a new one, hidden]"
-  read -r -s -p "${label} ${suffix}: " input
+  read -r -s -p "${label} ${suffix}: " input < /dev/tty
   echo
   __result="${input:-$default}"
 }
@@ -298,15 +311,40 @@ parse_compose() {
 # pure helper functions above (extract_service_block, resolve_default,
 # json_escape, etc.) without triggering interactive prompts or requiring
 # docker to be installed on the machine running the tests.
+#
+# `(return 0 2>/dev/null)`, not a BASH_SOURCE[0]-vs-$0 comparison: when
+# bash reads this script from stdin — `curl -fsSL <url>/wizard.sh | bash
+# -s -- wellness`, not a real file — BASH_SOURCE has zero elements, and
+# under `set -u` indexing an empty array is a hard "unbound variable"
+# crash. Defaulting it to empty avoids the crash but then compares "" to
+# $0 (literally "bash" in that mode), which is *also* wrong — it would
+# make curl|bash execution look "sourced" and exit before a single prompt
+# runs. `return` is only legal inside a function or an actually-sourced
+# script, in *any* invocation mode (file, stdin, doesn't matter) — probing
+# that directly in a subshell is the standard, version-independent way to
+# ask "am I sourced?" without relying on BASH_SOURCE/$0 at all.
 # =====================================================================
-if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-  return 0 2>/dev/null || exit 0
+if (return 0 2>/dev/null); then
+  return 0
 fi
 
 command -v docker >/dev/null 2>&1 || {
   echo "docker not found on PATH — this wizard launches the container for you, so docker itself needs to be installed and reachable."
   exit 1
 }
+
+# Every prompt below reads from /dev/tty explicitly (see the header comment
+# on why: it's what makes `curl -fsSL <url>/wizard.sh | bash` work at all).
+# If there's truly no controlling terminal — invoked from cron/CI, stdin
+# and /dev/tty both unavailable — fail once, clearly, here, instead of
+# letting every individual `read` fail with a cryptic "No such device".
+{ exec 3< /dev/tty; } 2>/dev/null || {
+  echo "wizard.sh needs an interactive terminal to prompt for values (couldn't open /dev/tty)."
+  echo "Running from a non-interactive context like cron or CI? Set the CROWDSEC_* env vars"
+  echo "directly and run 'docker run' against the image yourself instead — see README.md."
+  exit 1
+}
+exec 3<&-
 
 echo "crowdsec-troubleshooter setup wizard"
 echo "─────────────────────────────────────"
@@ -321,7 +359,7 @@ if [[ -z "$ACTION" ]]; then
       "live-test <target-url>") ACTION="live-test"; prompt ACTION_ARG "Target URL to test blocking against" ""; break ;;
       *) echo "Pick 1, 2, or 3." ;;
     esac
-  done
+  done < /dev/tty
 fi
 
 load_creds_file "$CREDS_FILE"
@@ -434,6 +472,20 @@ case "$ACTION" in
   check-ip) DOCKER_ARGS+=(check-ip "$ACTION_ARG") ;;
   live-test) DOCKER_ARGS+=(live-test --target-url "$ACTION_ARG") ;;
 esac
+
+# Pull before running so this always exercises the latest published image
+# rather than whatever stale copy happened to already be on disk — the
+# whole point of running via the wizard instead of a hand-typed `docker
+# run` that people forget to re-pull for. A failed pull degrades to a
+# warning, not a hard stop: WIZARD_IMAGE may point at a local-only tag
+# (e.g. a test build) that was never meant to be pulled from a registry.
+if [[ "${WIZARD_SKIP_PULL:-}" != "1" ]]; then
+  note "Pulling ${IMAGE_NAME}..."
+  if ! docker pull "$IMAGE_NAME"; then
+    warn "Couldn't pull ${IMAGE_NAME} — continuing with whatever local copy exists, if any"
+    note "Set WIZARD_SKIP_PULL=1 to skip the pull step entirely, e.g. for a local-only image"
+  fi
+fi
 
 echo
 note "Running: docker ${DOCKER_ARGS[*]}"
