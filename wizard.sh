@@ -172,16 +172,25 @@ detect_crowdsec_compose_file() {
   container="$(docker ps --format '{{.Names}}\t{{.Image}}' 2>/dev/null | awk -F'\t' '$2 ~ /^crowdsecurity\/crowdsec(:|$)/ {print $1; exit}')"
   [[ -z "$container" ]] && return 1
 
-  local working_dir
-  working_dir="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$container" 2>/dev/null)"
+  # One `docker inspect` call for both labels instead of two — same
+  # container, same already-cached metadata, no reason to round-trip the
+  # daemon twice. Verified the combined --format template (a literal
+  # {{"\t"}} between the two `index` lookups) against a real container
+  # before relying on it, not just updated to match: a genuinely missing
+  # label renders as an empty string via `index` (not the "<no value>"
+  # text `.Config.Labels.Foo` dot-notation would produce), which the
+  # existing -z checks below already handle correctly either way.
+  local working_dir config_files
+  IFS=$'\t' read -r working_dir config_files < <(docker inspect --format \
+    '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}{{"\t"}}{{ index .Config.Labels "com.docker.compose.project.config_files" }}' \
+    "$container" 2>/dev/null)
   [[ -z "$working_dir" || "$working_dir" == "<no value>" ]] && return 1
 
   # config_files can be a comma-separated list (multiple -f flags) and each
   # entry may be relative to working_dir or already absolute — take the
   # first one, falling back to the plain default filename if the label
   # itself isn't present (older Compose versions may not set it).
-  local config_files first_file candidate
-  config_files="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' "$container" 2>/dev/null)"
+  local first_file candidate
   first_file="${config_files%%,*}"
 
   if [[ -n "$first_file" && "$first_file" != "<no value>" ]]; then
@@ -329,7 +338,7 @@ resolve_compose_vars() {
   local text="$1" env_file="$2"
   [[ -r "$env_file" ]] || { echo "$text"; return; }
   local var val result="$text"
-  for var in $(echo "$text" | grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*\}?' | tr -d '${}' | sort -u || true); do
+  for var in $(grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*\}?' <<<"$text" | tr -d '${}' | sort -u || true); do
     val="$(grep -E "^${var}=" "$env_file" | head -1 | sed -E "s/^${var}=//" || true)"
     [[ -z "$val" ]] && continue
     # A .env value is very often quoted (DOMAINNAME="example.com") — that's
@@ -361,10 +370,10 @@ parse_compose() {
   if cs_block="$(extract_service_block "$file" 'image:[[:space:]]*"?crowdsecurity/crowdsec"?[[:space:]]*$')"; then
     note "Found a crowdsecurity/crowdsec service in ${file}"
     local ports lapi_port metrics_port svc_name
-    ports="$(echo "$cs_block" | extract_yaml_list ports)"
-    lapi_port="$(echo "$ports" | awk -F: '$2==8080 {print $1}' | head -1)"
-    metrics_port="$(echo "$ports" | awk -F: '$2==6060 {print $1}' | head -1)"
-    svc_name="$(echo "$cs_block" | head -1 | sed -E 's/^[[:space:]]*//; s/:.*//')"
+    ports="$(extract_yaml_list ports <<<"$cs_block")"
+    lapi_port="$(awk -F: '$2==8080 {print $1}' <<<"$ports" | head -1)"
+    metrics_port="$(awk -F: '$2==6060 {print $1}' <<<"$ports" | head -1)"
+    svc_name="$(head -1 <<<"$cs_block" | sed -E 's/^[[:space:]]*//; s/:.*//')"
 
     if [[ -n "$lapi_port" && -n "$host_ip" ]]; then
       COMPOSE[CROWDSEC_LAPI_URL]="http://${host_ip}:${lapi_port}"
@@ -380,8 +389,8 @@ parse_compose() {
     fi
 
     local nets
-    nets="$(echo "$cs_block" | extract_yaml_child_keys networks)"
-    [[ -n "$nets" ]] && note "crowdsec is attached to docker network(s): $(echo "$nets" | tr '\n' ' ')"
+    nets="$(extract_yaml_child_keys networks <<<"$cs_block")"
+    [[ -n "$nets" ]] && note "crowdsec is attached to docker network(s): $(tr '\n' ' ' <<<"$nets")"
   else
     warn "No crowdsecurity/crowdsec service found in ${file} — nothing to auto-detect from it. Double check the image: line matches (tags/comments can throw simple pattern matching off)."
   fi
@@ -390,10 +399,10 @@ parse_compose() {
   if tb_block="$(extract_service_block "$file" 'image:.*traefik-crowdsec-bouncer')"; then
     note "Found a Traefik bouncer service in ${file}"
     local ports host_port svc_name internal_port
-    ports="$(echo "$tb_block" | extract_yaml_list ports)"
-    host_port="$(echo "$ports" | head -1 | cut -d: -f1)"
-    svc_name="$(echo "$tb_block" | head -1 | sed -E 's/^[[:space:]]*//; s/:.*//')"
-    internal_port="$(echo "$tb_block" | extract_env_value PORT)"
+    ports="$(extract_yaml_list ports <<<"$tb_block")"
+    host_port="$(head -1 <<<"$ports" | cut -d: -f1)"
+    svc_name="$(head -1 <<<"$tb_block" | sed -E 's/^[[:space:]]*//; s/:.*//')"
+    internal_port="$(extract_env_value PORT <<<"$tb_block")"
     internal_port="${internal_port:-8080}"
     if [[ -n "$host_port" && -n "$host_ip" ]]; then
       COMPOSE[TRAEFIK_BOUNCER_URL]="http://${host_ip}:${host_port}"
@@ -413,10 +422,10 @@ parse_compose() {
   if tf_block="$(extract_service_block "$file" 'image:[[:space:]]*"?traefik:')"; then
     note "Found a Traefik service in ${file}"
     local svc_name ports cmds labels
-    svc_name="$(echo "$tf_block" | head -1 | sed -E 's/^[[:space:]]*//; s/:.*//')"
-    ports="$(echo "$tf_block" | extract_yaml_list ports)"
-    cmds="$(echo "$tf_block" | extract_yaml_list command)"
-    labels="$(echo "$tf_block" | extract_yaml_list labels)"
+    svc_name="$(head -1 <<<"$tf_block" | sed -E 's/^[[:space:]]*//; s/:.*//')"
+    ports="$(extract_yaml_list ports <<<"$tf_block")"
+    cmds="$(extract_yaml_list command <<<"$tf_block")"
+    labels="$(extract_yaml_list labels <<<"$tf_block")"
 
     # The dashboard/API router is identifiable by Traefik's own convention
     # regardless of what the operator named it: whichever router's
@@ -429,15 +438,15 @@ parse_compose() {
     # above for why an unguarded grep here is a real bug under `set -e`,
     # not just theoretical: this exact line is what a bats regression test
     # for the no-dashboard-router path caught failing.
-    dash_router="$(echo "$labels" | grep -E '\.service=api@internal$' | sed -E 's/^traefik\.http\.routers\.([^.]+)\.service=api@internal$/\1/' | head -1 || true)"
+    dash_router="$(grep -E '\.service=api@internal$' <<<"$labels" | sed -E 's/^traefik\.http\.routers\.([^.]+)\.service=api@internal$/\1/' | head -1 || true)"
 
     local api_port=""
     if [[ -n "$dash_router" ]]; then
       local entrypoints_label first_ep rule host_expr scheme resolved_host env_file dash_middlewares
-      entrypoints_label="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.entrypoints")"
+      entrypoints_label="$(extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.entrypoints" <<<"$labels")"
       first_ep="${entrypoints_label%%,*}"
       if [[ -n "$first_ep" ]]; then
-        api_port="$(echo "$cmds" | grep -iE "^--entrypoints\\.${first_ep}\\.address=" | sed -E 's/.*:([0-9]+).*/\1/' | head -1 || true)"
+        api_port="$(grep -iE "^--entrypoints\\.${first_ep}\\.address=" <<<"$cmds" | sed -E 's/.*:([0-9]+).*/\1/' | head -1 || true)"
       fi
 
       # A real-world case, not hypothetical: a dashboard router bound only
@@ -448,14 +457,14 @@ parse_compose() {
       # challenged before ever reaching api@internal. No URL substitution
       # fixes that — it's a real limitation of that check for this setup,
       # not a wrong guess. Say so rather than suggest a URL fated to fail.
-      dash_middlewares="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.middlewares")"
+      dash_middlewares="$(extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.middlewares" <<<"$labels")"
       if [[ -n "$dash_middlewares" ]]; then
         warn "Dashboard router '${dash_router}' has middlewares=${dash_middlewares} attached (auth/SSO?) — check_bouncer_type.sh's Traefik-API confirmation needs UNauthenticated access, so it likely can't succeed through this router regardless of which URL is used. Only relevant if you rely on that specific check; everything else in this tool is unaffected."
       fi
 
-      rule="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.rule")"
+      rule="$(extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.rule" <<<"$labels")"
       if [[ "$rule" == *"Host("* ]]; then
-        host_expr="$(echo "$rule" | sed -E 's/.*Host\(`?([^`)]*)`?\).*/\1/')"
+        host_expr="$(sed -E 's/.*Host\(`?([^`)]*)`?\).*/\1/' <<<"$rule")"
         env_file="$(dirname "$file")/.env"
         resolved_host="$(resolve_compose_vars "$host_expr" "$env_file")"
         scheme="http"; [[ "$first_ep" == *https* ]] && scheme="https"
@@ -476,7 +485,7 @@ parse_compose() {
     # Always http:// regardless of the public router's scheme — this is the
     # container's own internal listener, never double-TLS-wrapped.
     local api_host_port
-    api_host_port="$(echo "$ports" | awk -F: -v p="$api_port" '$2==p {print $1}' | head -1)"
+    api_host_port="$(awk -F: -v p="$api_port" '$2==p {print $1}' <<<"$ports" | head -1)"
     if [[ -n "$api_host_port" && -n "$host_ip" ]]; then
       COMPOSE[TRAEFIK_API_URL]="http://${host_ip}:${api_host_port}"
       if [[ -n "$dash_router" ]]; then COMPOSE[TRAEFIK_DIRECT_URL]="http://${host_ip}:${api_host_port}"; fi

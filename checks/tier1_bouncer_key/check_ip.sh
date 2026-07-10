@@ -64,12 +64,12 @@ if [[ -z "$response" || "$response" == "null" || "$response" == "[]" ]]; then
   exit 0
 fi
 
-count="$(echo "$response" | jq 'length')"
-for i in $(seq 0 $((count - 1))); do
-  scenario="$(echo "$response" | jq -r ".[$i].scenario // \"unknown\"")"
-  origin="$(echo "$response" | jq -r ".[$i].origin // \"unknown\"")"
-  duration="$(echo "$response" | jq -r ".[$i].duration // \"unknown\"")"
-
+# One jq call for every decision, not one per field per decision — the
+# original called jq 1+3N times for N decisions (length, then scenario/
+# origin/duration separately per index), each forking a process and
+# re-parsing the same JSON from scratch. @tsv here is safe against any
+# embedded tabs/newlines in field values (jq escapes them per the TSV spec).
+while IFS=$'\t' read -r scenario origin duration; do
   friendly="$(translate_scenario "$scenario")"
   origin_friendly="$(translate_origin "$origin")"
 
@@ -81,7 +81,7 @@ for i in $(seq 0 $((count - 1))); do
   fi
   echo "   Source: ${origin_friendly}"
   echo "   Duration: ${duration}"
-done
+done < <(jq -r '.[] | [(.scenario // "unknown"), (.origin // "unknown"), (.duration // "unknown")] | @tsv' <<<"$response")
 
 info "To unblock: docker exec crowdsec cscli decisions delete --ip ${IP}
 This needs a machine credential run directly on your CrowdSec server — the read-only bouncer
