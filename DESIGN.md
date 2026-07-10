@@ -136,6 +136,67 @@ scoped the same way as `check_lapi_url_scope.sh`'s heuristics: best-effort
 regex/awk over YAML, never claimed as authoritative, always overridable at
 the prompt it feeds into.
 
+## Known-issues KB as data, not more check scripts
+
+Researching common CrowdSec/Traefik problems (top GitHub issues across
+`crowdsecurity/crowdsec`, `crowdsecurity/cs-firewall-bouncer`, and
+`maxlerebourg/crowdsec-bouncer-traefik-plugin`) turned up far more
+Docker-relevant, not-yet-covered gotchas than would fit as actual checks —
+most of them (upstream version regressions, nftables internals, "which
+release broke this") are things this tool has no reliable, credential-free
+way to detect. They're reference material for a human reading the output,
+not something a check script can assert pass/fail on. Rather than growing
+every check script with more string literals to cover cases it can't
+actually test for, they live in `lib/known_issues.sh` as plain data — an
+associative array of id → title/component/symptom/fix/link, browsable via
+`troubleshoot.sh issues`. The links are plain text for the user to read or
+copy elsewhere — this tool never dereferences them itself, so it works
+the same whether or not the host it's running on can actually reach them.
+
+A check pointing at *another script in this tool* instead of an actual
+resolution isn't a resolution — it just relocates the same question.
+`check_bouncer_type.sh` told the user CrowdSec's docs "now recommend the
+Traefik plugin bouncer instead," with no link, which (a) gave no way to
+actually act on it, and (b) attributed the recommendation to CrowdSec's
+own docs without that having been verified — searching `docs.crowdsec.net`
+directly turned up no such explicit claim; the real, citable source turned
+out to be the plugin's own README "About" section explaining why it
+replaced the ForwardAuth architecture. Fixed by adding a `kb_hint <id>`
+helper that a check can call to print a real, link-checked resolution
+straight from `lib/known_issues.sh` inline in its own OK/WARN/CRIT output —
+see `traefik-legacy-forwardauth-vs-plugin` in that file and its use in
+`check_bouncer_type.sh`. Every link in the KB is verified to actually
+resolve before being added, not just assumed to still be live from when it
+was found.
+
+Two decisions worth recording:
+- **Pure bash, not JSON+jq.** `jq` is a hard dependency elsewhere in this
+  tool (`require_jq`), but the KB itself has no reason to need it — a
+  bash associative array needs no parser at all.
+- **Sourced lazily, and gated before `capability_check.sh`, not after.**
+  `troubleshoot.sh` originally sourced `capability_check.sh` first,
+  always — which hard-fails without `CROWDSEC_LAPI_URL` by design ("nothing
+  in this tool is meaningful without it"). That stopped being true the
+  moment `issues` existed: a KB lookup is meaningful with zero
+  credentials and zero network access, which is the entire point of
+  shipping it inside the image for use on a restricted network. Caught
+  before it shipped by actually running `troubleshoot.sh issues` with a
+  clean env rather than just reading the dispatch logic — it failed
+  demanding a LAPI URL it never needed. Fixed by special-casing `issues`
+  before `capability_check.sh` is even sourced, not by relaxing that
+  script's hard-fail (which is still correct for every other action).
+- **`declare -gA`, not `declare -A`, for the data array.** Sourcing a file
+  that does `declare -A FOO=(...)` from inside a shell function (a bats
+  `setup()`, or any future non-top-level caller) makes `FOO` local to that
+  function under bash's scoping rules — it silently vanishes the moment
+  the function returns, and lookups afterward fail in a confusing way
+  (`set -u` turns a hyphenated missing-array-key lookup into an "unbound
+  variable" error naming an unrelated word from the key, not the actual
+  missing-array problem). Caught by `known_issues.bats` sourcing the file
+  from its own `setup()` — exactly the scenario this would otherwise only
+  surface for whoever next tried to source this file from a function
+  rather than top-level `troubleshoot.sh`.
+
 ## Why no init system (s6/tini/dumb-init)
 
 Considered when the question of signal handling for `test_live_block.sh`'s

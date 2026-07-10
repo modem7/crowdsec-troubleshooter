@@ -40,6 +40,24 @@ setup() {
   [[ "$output" == *"Legacy ForwardAuth-style Traefik bouncer detected"* ]]
 }
 
+@test "legacy bouncer detection prints an actual KB resolution link, not just an unverified claim" {
+  start_mock_lapi 8220 "    def do_GET(self):
+        if self.path == '/api/v1/ping':
+            self.send_response(200); self.end_headers()
+            self.wfile.write(b'{\"message\": \"pong\"}')
+        else:
+            self.send_response(404); self.end_headers()"
+  export HAS_BOUNCER_URL=true
+  export TRAEFIK_BOUNCER_URL="http://127.0.0.1:8220"
+  run bash "$CHECK"
+  stop_mock_lapi 8220
+  [[ "$output" == *"KB: Legacy ForwardAuth Traefik bouncer vs the modern plugin bouncer"* ]]
+  [[ "$output" == *"https://docs.crowdsec.net/u/bouncers/traefik/"* ]]
+  # the old wording attributed this to CrowdSec's own docs without that
+  # ever having been verified — make sure it's gone, not just supplemented
+  [[ "$output" != *"CrowdSec's own docs now recommend the Traefik plugin bouncer instead"* ]]
+}
+
 @test "reports no legacy bouncer found, and does not claim that as plugin confirmation" {
   start_mock_lapi 8215 "    def do_GET(self):
         self.send_response(404); self.end_headers()"
