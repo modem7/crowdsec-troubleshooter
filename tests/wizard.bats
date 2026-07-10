@@ -38,6 +38,17 @@ setup() {
   [[ "$result" == *"16934:6060"* ]]
 }
 
+@test "extract_yaml_list strips a trailing unquoted # comment from an item" {
+  result="$(printf 'ports:\n  - 8082:8080 # Dashboard\n  - 8083:8081 # Ping\n' | extract_yaml_list ports)"
+  [ "$(echo "$result" | sed -n 1p)" = "8082:8080" ]
+  [ "$(echo "$result" | sed -n 2p)" = "8083:8081" ]
+}
+
+@test "extract_yaml_list does not strip a literal # inside a quoted item" {
+  result="$(printf 'labels:\n  - "traefik.some.label=value#notacomment"\n' | extract_yaml_list labels)"
+  [ "$result" = "traefik.some.label=value#notacomment" ]
+}
+
 @test "extract_yaml_child_keys pulls network names from mapping-style networks:" {
   block="$(extract_service_block tests/fixtures/sample-compose.yml 'image:[[:space:]]*"?crowdsecurity/crowdsec"?[[:space:]]*$')"
   result="$(echo "$block" | extract_yaml_child_keys networks)"
@@ -48,6 +59,101 @@ setup() {
   block="$(extract_service_block tests/fixtures/sample-compose.yml 'image:.*traefik-crowdsec-bouncer')"
   result="$(echo "$block" | extract_env_value PORT)"
   [ "$result" = "8080" ]
+}
+
+@test "extract_label_value pulls a dotted Traefik label's value, quoted or not" {
+  block="$(extract_service_block tests/fixtures/sample-compose.yml 'image:[[:space:]]*"?traefik:')"
+  labels="$(echo "$block" | extract_yaml_list labels)"
+  result="$(echo "$labels" | extract_label_value 'traefik\.http\.routers\.traefik-rtr\.service')"
+  [ "$result" = "api@internal" ]
+}
+
+@test "resolve_compose_vars substitutes \$VAR and \${VAR} from a matching .env file" {
+  tmpfile="$(mktemp)"
+  cat > "$tmpfile" <<'EOF'
+DOMAINNAME=example.com
+EOF
+  result="$(resolve_compose_vars 'traefik.$DOMAINNAME' "$tmpfile")"
+  rm -f "$tmpfile"
+  [ "$result" = "traefik.example.com" ]
+}
+
+@test "resolve_compose_vars leaves the variable untouched when no .env is found" {
+  result="$(resolve_compose_vars 'traefik.$DOMAINNAME' "/does/not/exist/.env")"
+  [ "$result" = 'traefik.$DOMAINNAME' ]
+}
+
+@test "resolve_compose_vars leaves the variable untouched when .env exists but has no matching key" {
+  tmpfile="$(mktemp)"
+  echo 'SOMETHING_ELSE=value' > "$tmpfile"
+  result="$(resolve_compose_vars 'traefik.$DOMAINNAME' "$tmpfile")"
+  rm -f "$tmpfile"
+  [ "$result" = 'traefik.$DOMAINNAME' ]
+}
+
+@test "parse_compose finds the Traefik dashboard router via the api@internal label and suggests TRAEFIK_API_URL/TRAEFIK_DIRECT_URL" {
+  declare -gA COMPOSE=()
+  parse_compose tests/fixtures/sample-compose.yml >/dev/null
+  # Depends on detect_host_ip() succeeding in whatever environment this
+  # runs in: published-port form (host-ip:8082) if it does, the
+  # internal-service-name fallback (traefik:8080) if it can't — both are
+  # correct outcomes for their respective environment, so accept either
+  # rather than asserting a specific host IP that varies by machine.
+  [[ "${COMPOSE[TRAEFIK_API_URL]}" == http://*:8082 || "${COMPOSE[TRAEFIK_API_URL]}" == "http://traefik:8080" ]]
+  [ "${COMPOSE[TRAEFIK_API_URL]}" = "${COMPOSE[TRAEFIK_DIRECT_URL]}" ]
+}
+
+@test "parse_compose suggests TRAEFIK_PROTECTED_URL from the dashboard router's Host() rule, left unresolved with no .env present" {
+  declare -gA COMPOSE=()
+  parse_compose tests/fixtures/sample-compose.yml >/dev/null
+  # tests/fixtures/ has no .env, so $DOMAINNAME is expected to survive
+  # unresolved — a clearer signal to fill it in by hand than a wrong guess.
+  [ "${COMPOSE[TRAEFIK_PROTECTED_URL]}" = 'http://traefik.$DOMAINNAME' ]
+}
+
+@test "parse_compose still suggests TRAEFIK_API_URL without a dashboard router, but leaves PROTECTED/DIRECT unset rather than guessing" {
+  tmpdir="$(mktemp -d)"
+  cat > "${tmpdir}/docker-compose.yml" <<'EOF'
+services:
+  traefik:
+    image: traefik:v3.0
+    labels:
+      - "traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAINNAME`)"
+    command:
+      - --entryPoints.traefik.address=:8080
+    ports:
+      - 8082:8080
+EOF
+  declare -gA COMPOSE=()
+  parse_compose "${tmpdir}/docker-compose.yml" >/dev/null
+  rm -rf "$tmpdir"
+  # No `service=api@internal` label — this tool can't confirm which router
+  # is actually the dashboard, so it must not guess a security-check target.
+  [[ "${COMPOSE[TRAEFIK_API_URL]}" == http://*:8082 || "${COMPOSE[TRAEFIK_API_URL]}" == "http://traefik:8080" ]]
+  [ -z "${COMPOSE[TRAEFIK_PROTECTED_URL]:-}" ]
+  [ -z "${COMPOSE[TRAEFIK_DIRECT_URL]:-}" ]
+}
+
+@test "parse_compose resolves \$DOMAINNAME and detects https scheme when a matching .env sits next to the compose file" {
+  tmpdir="$(mktemp -d)"
+  cat > "${tmpdir}/docker-compose.yml" <<'EOF'
+services:
+  traefik:
+    image: traefik:v3.0
+    labels:
+      - "traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAINNAME`)"
+      - "traefik.http.routers.traefik-rtr.entrypoints=https-int"
+      - "traefik.http.routers.traefik-rtr.service=api@internal"
+    command:
+      - --entryPoints.https-int.address=:8080
+    ports:
+      - 8082:8080
+EOF
+  echo 'DOMAINNAME=example.com' > "${tmpdir}/.env"
+  declare -gA COMPOSE=()
+  parse_compose "${tmpdir}/docker-compose.yml" >/dev/null
+  rm -rf "$tmpdir"
+  [ "${COMPOSE[TRAEFIK_PROTECTED_URL]}" = "https://traefik.example.com" ]
 }
 
 @test "resolve_default prefers an exported env var over a saved or compose value" {
