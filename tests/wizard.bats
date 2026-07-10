@@ -78,6 +78,33 @@ EOF
   [ "$result" = "traefik.example.com" ]
 }
 
+@test "resolve_compose_vars strips a matching pair of double quotes around a .env value" {
+  # Real bug: a user's actual .env had DOMAINNAME="modem7.com" (quoted,
+  # valid Compose .env syntax) and the raw quotes rode straight through
+  # into the suggested URL as https://traefik."modem7.com".
+  tmpfile="$(mktemp)"
+  echo 'DOMAINNAME="modem7.com"' > "$tmpfile"
+  result="$(resolve_compose_vars 'traefik.$DOMAINNAME' "$tmpfile")"
+  rm -f "$tmpfile"
+  [ "$result" = "traefik.modem7.com" ]
+}
+
+@test "resolve_compose_vars strips a matching pair of single quotes around a .env value" {
+  tmpfile="$(mktemp)"
+  echo "DOMAINNAME='modem7.com'" > "$tmpfile"
+  result="$(resolve_compose_vars 'traefik.$DOMAINNAME' "$tmpfile")"
+  rm -f "$tmpfile"
+  [ "$result" = "traefik.modem7.com" ]
+}
+
+@test "resolve_compose_vars leaves an unmatched/internal quote alone rather than mangling it" {
+  tmpfile="$(mktemp)"
+  echo 'DOMAINNAME=mo"dem7.com' > "$tmpfile"
+  result="$(resolve_compose_vars 'traefik.$DOMAINNAME' "$tmpfile")"
+  rm -f "$tmpfile"
+  [ "$result" = 'traefik.mo"dem7.com' ]
+}
+
 @test "resolve_compose_vars leaves the variable untouched when no .env is found" {
   result="$(resolve_compose_vars 'traefik.$DOMAINNAME' "/does/not/exist/.env")"
   [ "$result" = 'traefik.$DOMAINNAME' ]
@@ -149,7 +176,11 @@ services:
     ports:
       - 8082:8080
 EOF
-  echo 'DOMAINNAME=example.com' > "${tmpdir}/.env"
+  # Quoted on purpose, not DOMAINNAME=example.com — this is the actual
+  # real-world shape (a real user's .env had it quoted) that originally
+  # produced https://traefik."example.com" end to end through this exact
+  # path before resolve_compose_vars stripped matching quote pairs.
+  echo 'DOMAINNAME="example.com"' > "${tmpdir}/.env"
   declare -gA COMPOSE=()
   parse_compose "${tmpdir}/docker-compose.yml" >/dev/null
   rm -rf "$tmpdir"
