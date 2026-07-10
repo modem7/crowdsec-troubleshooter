@@ -21,7 +21,8 @@ reference for the manual `docker run` route, and for wizard.sh's own flags.
 | `TRAEFIK_BOUNCER_URL` | 0 (optional) | Bouncer-type fingerprinting — legacy ForwardAuth-style bouncer | — |
 | `TRAEFIK_API_URL` | 0 (optional) | Bouncer-type fingerprinting — modern Traefik plugin bouncer | Traefik must have `--api.dashboard=true` |
 | `TRAEFIK_PROTECTED_URL` + `TRAEFIK_DIRECT_URL` | 0 (optional) | Auth-bypass comparison check | Both must be set together |
-| `CROWDSEC_LAPI_KEY` | 1 | `check-ip` — the block checker | A dedicated **read-only** bouncer key |
+| `-v .../crontab:/mnt/cron/crontab:ro` (or `cron.d`) | 0 (optional) | Confirms a cron job keeps `cscli hub` current — advisory prints either way | Read-only mount, see below |
+| `CROWDSEC_LAPI_KEY` | 1 | Ban-count stats (automatic) + `check-ip` — the block checker | A dedicated **read-only** bouncer key |
 | `CROWDSEC_MACHINE_CREDENTIALS_FILE` | 2 | `live-test` — proves blocking works end-to-end | A `-v` mount (see below) + a machine credential |
 | `CROWDSEC_VERSION_HINT` | optional | CVE checking against a hardcoded, unmaintained list — see caveat below | — |
 | Tier-3 `-v` mounts | 3 | `DOCKER-USER` chain evidence, duplicate-acquisition detection, syslog hinting, compose-file hardening | Read-only host file mounts, see below |
@@ -81,6 +82,14 @@ docker run --rm -e CROWDSEC_LAPI_URL=http://crowdsec:8080 modem7/crowdsec-troubl
   Set both to check whether the backend enforces its own auth or relies
   entirely on the router/middleware layer (bypassable by anything that can
   reach the backend directly).
+- **Cron mount** *(optional)* — `check_hub_update_cron.sh` always prints a
+  recommendation to run `cscli hub update && cscli hub upgrade`
+  periodically (nothing else keeps scenarios/collections current). Mount a
+  crontab export to confirm it's actually there instead of just
+  suggesting it: `-v /path/to/crontab:/mnt/cron/crontab:ro` for a single
+  file (e.g. `crontab -l > /path/to/crontab`), or
+  `-v /etc/cron.d:/mnt/cron/cron.d:ro` for a system-wide cron.d directory.
+  Either or both — it scans whatever's actually mounted.
 
 ## Tier 1 — a dedicated read-only bouncer key
 
@@ -96,7 +105,14 @@ docker run --rm -e CROWDSEC_LAPI_URL=... -e CROWDSEC_LAPI_KEY=... \
   run on your CrowdSec server (this can't be done over the network; bouncer
   registration is a database operation, not an LAPI HTTP endpoint) and the
   matching `setup remove_readonly_bouncer` output for undoing it later.
-- **CLI argument**: `check-ip <ip-address>` — the IP to look up.
+- **Runs automatically** once set, as part of the default wellness sweep
+  (`--tier 1` or higher): a ban-count summary (`check_ban_stats.sh`) —
+  total active decisions broken down by scope and origin, visible proof
+  CrowdSec is actually enforcing something, not just running. Needs no
+  argument, unlike `check-ip`, so it doesn't need to be invoked by name.
+- **CLI argument**: `check-ip <ip-address>` — the IP to look up. Stays a
+  named action (`check-ip 198.51.100.23`), since it needs to be told which
+  IP — the one tier1 thing that can't run unattended.
 
 ## Tier 2 — a machine credential (read-write)
 
@@ -168,6 +184,7 @@ Rarely needed — mostly for forks, CI, or working around something specific.
 | `IMAGE_FRESHNESS_REPO` | `modem7/crowdsec-troubleshooter` | Which GitHub repo the image-freshness check compares its build commit against — only relevant for a fork. |
 | `GITHUB_API_BASE` | `https://api.github.com` | Test-only override for the image-freshness check's API endpoint. |
 | `IP_ECHO_URL` | `https://api.ipify.org` | Test-only override for `live-test`'s self-IP lookup. |
+| `CRON_MOUNT_BASE` | `/mnt/cron` | Test-only override for the cron-mount base path — real usage always mounts to the fixed default. |
 
 ## `wizard.sh` flags
 
