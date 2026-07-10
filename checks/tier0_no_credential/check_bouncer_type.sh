@@ -57,7 +57,7 @@ fi
 if [[ "${HAS_TRAEFIK_API:-false}" == true ]]; then
   plugin_checked=true
   middlewares="$(http_get "${TRAEFIK_API_URL}/api/http/middlewares" 2>/dev/null)"
-  if [[ -n "$middlewares" ]] && echo "$middlewares" | jq -e '.[] | select(.plugin != null) | .provider // "" | test("crowdsec"; "i")' >/dev/null 2>&1; then
+  if [[ -n "$middlewares" ]] && jq -e '.[] | select(.plugin != null) | .provider // "" | test("crowdsec"; "i")' <<<"$middlewares" >/dev/null 2>&1; then
     plugin_detected=true
   elif [[ -z "$middlewares" ]]; then
     warn "Couldn't reach Traefik's API at ${TRAEFIK_API_URL}/api/http/middlewares"

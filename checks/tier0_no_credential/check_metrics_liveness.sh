@@ -34,7 +34,7 @@ own config, which is loopback-only and invisible to this container even on the s
 Set prometheus.listen_addr: 0.0.0.0 in crowdsec's config.yaml to fix this."
   exit 1
 fi
-first="$(echo "$raw_first" | sum_hit_counters)"
+first="$(sum_hit_counters <<<"$raw_first")"
 
 step "First metrics sample: ${first} total log lines processed. Waiting ${POLL_GAP_SECONDS}s..."
 sleep "$POLL_GAP_SECONDS"
@@ -45,7 +45,7 @@ if [[ -z "$raw_second" ]]; then
   warn "Metrics endpoint stopped responding between polls — check crowdsec is still running"
   exit 1
 fi
-second="$(echo "$raw_second" | sum_hit_counters)"
+second="$(sum_hit_counters <<<"$raw_second")"
 
 delta=$(( second - first ))
 if (( delta > 0 )); then
