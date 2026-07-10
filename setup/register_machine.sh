@@ -22,12 +22,27 @@ your host system, or anything outside CrowdSec's own ban list. Only add
 this if you're comfortable with that — everything else in this tool works
 fine without it.
 
-Run this ONE command on your CrowdSec server:
+Step 1 — run this ONE command on your CrowdSec server:
 
     docker exec crowdsec cscli machines add ${MACHINE_NAME} --auto
 
-Save the full output as a file (it's the credentials file itself), then
-point this container's CROWDSEC_MACHINE_CREDENTIALS_FILE at it.
+It prints a Login and Password (not a ready-to-use token — this tool logs
+in fresh on every run, so the credential never goes stale).
+
+Step 2 — save those two values as a small JSON file, e.g. machine.json:
+
+    {"login": "${MACHINE_NAME}", "password": "<password from step 1>"}
+
+Step 3 — this file has to be readable *inside* the troubleshooter
+container, so mount it and point the env var at the in-container path —
+setting CROWDSEC_MACHINE_CREDENTIALS_FILE alone does nothing on its own,
+a bare -e can't reach a file that only exists on the host:
+
+    docker run --rm \\
+      -e CROWDSEC_LAPI_URL=... \\
+      -e CROWDSEC_MACHINE_CREDENTIALS_FILE=/creds/machine.json \\
+      -v /path/on/host/machine.json:/creds/machine.json:ro \\
+      modem7/crowdsec-troubleshooter live-test --target-url https://your-service.example.com
 
 To undo this later, run:
 

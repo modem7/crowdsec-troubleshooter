@@ -72,6 +72,18 @@ strength (API key type) and file-mount access — not capabilities.
 - **CAPI status and the exact AppSec probe path are unverified.** Left in as
   clearly-flagged placeholders (`check_capi.sh`, `test_appsec_probe.sh`)
   rather than either silently dropped or presented with false confidence.
+- **Machine credentials file held a `.token` field that nothing ever
+  produced.** `test_live_block.sh` originally read a ready-made bearer
+  token straight out of the credentials file, but `cscli machines add
+  --auto` only ever prints a login/password pair — there's no token to
+  save at setup time. Fixed by storing login+password instead and having
+  the script POST to `/v1/watchers/login` itself on every run to mint a
+  fresh short-lived JWT, which also sidesteps the token-expiry problem a
+  save-once approach would have hit a few hours after setup. Caught by a
+  user pointing out the README's `live-test` example didn't even mount the
+  credentials file into the container in the first place — the token/login
+  mismatch was found while checking that report, not by reading the code
+  cold.
 
 ## Why no daemon mode
 
@@ -79,6 +91,27 @@ See README. Short version: the only real argument for one (continuous
 monitoring) is already served by a scheduled one-shot run, and a daemon
 means a machine credential sitting live indefinitely, which undoes the
 credential-hygiene design of everything else in this tool.
+
+## Why wizard.sh runs on the host, not inside the container
+
+Every credential-collection UX up to this point assumed the user would
+type `-e CROWDSEC_LAPI_URL=...` by hand each run, or read it from their own
+shell history/scripts. That gets old fast, especially for
+`CROWDSEC_MACHINE_CREDENTIALS_FILE`, which also needs a `-v` mount most
+people forget (see the earlier corrections-list entry on that). The fix
+looks obvious in hindsight: prompt once, save the answers, reuse them next
+time. But it can't be *inside* `troubleshoot.sh` or the image at all — a
+`docker run --rm` container has no persistent filesystem across
+invocations, and no TTY unless `-it` is explicitly passed, which nothing
+in the documented usage does. Both requirements (persist a file across
+runs, prompt interactively) can only be satisfied by something that runs
+*before* `docker run` is invoked, on the host itself. `wizard.sh` is
+therefore a separate, host-executed, Linux-only script, not something
+`COPY`'d into the Dockerfile — it builds the `docker run` invocation and
+`exec`s it, rather than being run by it. Its docker-compose parsing is
+scoped the same way as `check_lapi_url_scope.sh`'s heuristics: best-effort
+regex/awk over YAML, never claimed as authoritative, always overridable at
+the prompt it feeds into.
 
 ## Why no init system (s6/tini/dumb-init)
 
