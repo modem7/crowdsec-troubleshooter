@@ -55,7 +55,7 @@ if [[ -z "$latest_response" ]]; then
   exit 0
 fi
 
-latest_sha="$(echo "$latest_response" | jq -r '.sha // empty' 2>/dev/null)"
+latest_sha="$(jq -r '.sha // empty' <<<"$latest_response" 2>/dev/null)"
 
 if [[ -z "$latest_sha" ]]; then
   info "GitHub's response didn't include a commit SHA (rate-limited?) — skipping the freshness check"
@@ -80,7 +80,7 @@ if [[ -z "$compare_response" ]]; then
   exit 0
 fi
 
-changed_relevant="$(echo "$compare_response" | jq -r '.files[]?.filename // empty' 2>/dev/null \
+changed_relevant="$(jq -r '.files[]?.filename // empty' <<<"$compare_response" 2>/dev/null \
   | grep -E '^(Dockerfile|lib/|checks/|setup/|versioncheck/|capability_check\.sh|troubleshoot\.sh|\.woodpecker\.yml)' \
   | head -1 || true)"
 
