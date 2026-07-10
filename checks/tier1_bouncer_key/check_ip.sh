@@ -82,4 +82,8 @@ for i in $(seq 0 $((count - 1))); do
   echo "   Source: ${origin_friendly}"
   echo "   Duration: ${duration}"
 done
+
+info "To unblock: docker exec crowdsec cscli decisions delete --ip ${IP}
+This needs a machine credential run directly on your CrowdSec server — the read-only bouncer
+key used for this check can only read decisions, it can't create or delete them."
 exit 0
