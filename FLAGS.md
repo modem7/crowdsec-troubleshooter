@@ -3,8 +3,12 @@
 Every `-e` var, `-v` mount, and CLI flag this tool actually reads, organized
 by the tier model from [README.md](./README.md#the-tier-model). Nothing
 here is required beyond `CROWDSEC_LAPI_URL` — everything else unlocks a
-specific, named check, and every check degrades gracefully (prints what
-it's missing and why, then exits 0) if its inputs aren't set.
+specific check, and every credential/mount-gated check degrades gracefully
+(prints what it's missing and why, then exits 0) if its inputs aren't set.
+One deliberate exception: `check_hub_update_cron.sh` always prints its
+recommendation regardless of any mount, since it's universally relevant
+advice rather than a setup-specific integration — see its own header
+comment and `DESIGN.md` for why.
 
 If you'd rather not track any of this by hand, [`wizard.sh`](./wizard.sh)
 prompts for whatever a given action actually needs and remembers your
