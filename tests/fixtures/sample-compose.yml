@@ -39,3 +39,21 @@ services:
     volumes:
       - $USERDIR/Crowdsec/cloudflare-worker-bouncer/cfg.yaml:/etc/crowdsec/bouncers/crowdsec-cloudflare-worker-bouncer.yaml
     restart: always
+
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAINNAME`)"
+      - "traefik.http.routers.traefik-rtr.entrypoints=traefik"
+      - "traefik.http.routers.traefik-rtr.service=api@internal"
+    command:
+      - --entryPoints.http-int.address=:80
+      - --entryPoints.https-int.address=:443
+      - --entryPoints.traefik.address=:8080
+    ports:
+      - 80:80
+      - 443:443
+      - 8082:8080 # Dashboard
+    restart: always
