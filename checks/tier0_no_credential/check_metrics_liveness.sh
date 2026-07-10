@@ -29,9 +29,9 @@ raw_first="$(http_get "${METRICS_URL}/metrics" 2>/dev/null)"
 
 if [[ -z "$raw_first" ]]; then
   warn "Couldn't reach the metrics endpoint at ${METRICS_URL}/metrics"
-  info "Most likely cause: prometheus.listen_addr is still the default 127.0.0.1 inside crowdsec's"
-  info "own config, which is loopback-only and invisible to this container even on the same network."
-  info "Set prometheus.listen_addr: 0.0.0.0 in crowdsec's config.yaml to fix this."
+  info "Most likely cause: prometheus.listen_addr is still the default 127.0.0.1 inside crowdsec's
+own config, which is loopback-only and invisible to this container even on the same network.
+Set prometheus.listen_addr: 0.0.0.0 in crowdsec's config.yaml to fix this."
   exit 1
 fi
 first="$(echo "$raw_first" | sum_hit_counters)"
@@ -53,7 +53,7 @@ if (( delta > 0 )); then
   exit 0
 else
   warn "No new log activity in the last ${POLL_GAP_SECONDS}s"
-  info "This can be normal on a quiet homelab with little traffic — not necessarily a problem on its own."
-  info "If you were expecting activity, check the acquisition config points at the right log files."
+  info "This can be normal on a quiet homelab with little traffic — not necessarily a problem on its own.
+If you were expecting activity, check the acquisition config points at the right log files."
   exit 0
 fi

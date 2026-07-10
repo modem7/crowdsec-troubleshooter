@@ -33,9 +33,9 @@ if [[ "$sock_count" -gt 0 ]]; then
   if [[ "$has_proxy" -eq 0 ]]; then
     warn "${sock_count} service(s) mount docker.sock directly, with no socket-proxy in this file:"
     echo "$sock_services" | sed 's/^/     - /'
-    info "Reminder: a :ro bind mount does NOT restrict which Docker API calls can be made over the"
-    info "socket — it only stops the container rewriting the socket file itself. Consider"
-    info "tecnativa/docker-socket-proxy to actually scope what each service can do."
+    info "Reminder: a :ro bind mount does NOT restrict which Docker API calls can be made over the
+socket — it only stops the container rewriting the socket file itself. Consider
+tecnativa/docker-socket-proxy to actually scope what each service can do."
   else
     ok "docker.sock is mounted by ${sock_count} service(s), but a socket-proxy is also present"
   fi
@@ -55,8 +55,8 @@ unbound_sensitive_ports="$(awk '
 if [[ -n "$unbound_sensitive_ports" ]]; then
   warn "Traefik/CrowdSec-image services publish ports with no bind address (defaults to 0.0.0.0):"
   echo "$unbound_sensitive_ports" | sed 's/^/     /'
-  info "If these are dashboard/API/metrics ports, they likely don't need to be reachable outside"
-  info "the docker network at all — sibling containers can already reach them internally."
+  info "If these are dashboard/API/metrics ports, they likely don't need to be reachable outside
+the docker network at all — sibling containers can already reach them internally."
 else
   ok "No unbound dashboard/API-style port publishes found on Traefik/CrowdSec-image services"
 fi
@@ -75,7 +75,7 @@ fi
 # Rule 5: no-new-privileges coverage ratio
 total_services="$(grep -cE '^\s{2}[a-zA-Z0-9_-]+:$' "$COMPOSE_FILE" || echo 0)"
 hardened_services="$(grep -c 'no-new-privileges' "$COMPOSE_FILE" || echo 0)"
-info "no-new-privileges is set on ${hardened_services} of roughly ${total_services} services"
-info "Cheap, broad win where missing — blocks setuid-based privilege escalation with no functional downside"
+info "no-new-privileges is set on ${hardened_services} of roughly ${total_services} services
+Cheap, broad win where missing — blocks setuid-based privilege escalation with no functional downside"
 
 echo ""

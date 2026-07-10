@@ -24,7 +24,14 @@ fine without it.
 
 Step 1 — run this ONE command on your CrowdSec server:
 
-    docker exec crowdsec cscli machines add ${MACHINE_NAME} --auto
+    docker exec crowdsec cscli machines add ${MACHINE_NAME} --auto -f -
+
+The "-f -" matters: without it, cscli tries to write credentials to
+/etc/crowdsec/local_api_credentials.yaml by default, which usually already
+exists (crowdsec's own engine already uses that file) — you'd hit exactly
+that collision error without this flag. "-f -" prints the credentials
+straight to your terminal instead, so there's no file to collide with and
+nothing left behind on the server to clean up afterward.
 
 It prints a Login and Password (not a ready-to-use token — this tool logs
 in fresh on every run, so the credential never goes stale).

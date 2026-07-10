@@ -30,9 +30,9 @@ if grep -q 'DOCKER-USER' "$CONFIG_PATH" 2>/dev/null; then
   ok "DOCKER-USER is listed in the firewall bouncer's iptables_chains config"
 else
   crit "DOCKER-USER is NOT in the firewall bouncer's iptables_chains config"
-  info "Without it, Docker's own NAT rules bypass the ban entirely for any Docker-proxied service —"
-  info "the classic 'ping blocked, HTTP still gets through' symptom."
-  info "Fix: add DOCKER-USER to iptables_chains in the bouncer's config and restart it."
+  info "Without it, Docker's own NAT rules bypass the ban entirely for any Docker-proxied service —
+the classic 'ping blocked, HTTP still gets through' symptom.
+Fix: add DOCKER-USER to iptables_chains in the bouncer's config and restart it."
 fi
 
 if [[ "${HAS_BOUNCER_LOG_MOUNT:-false}" == true ]]; then

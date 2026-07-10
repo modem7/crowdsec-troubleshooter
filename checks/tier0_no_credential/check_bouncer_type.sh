@@ -31,12 +31,12 @@ body="$(http_get "${TRAEFIK_BOUNCER_URL}/api/v1/ping" 2>/dev/null || true)"
 
 if [[ "$status" == "200" && "$body" == *"pong"* ]]; then
   warn "Legacy ForwardAuth-style Traefik bouncer detected at ${TRAEFIK_BOUNCER_URL}"
-  info "This bouncer type (fbonalair/freifunkmuc-style) predates CrowdSec's AppSec/WAF component."
-  info "CrowdSec's own docs now recommend the Traefik plugin bouncer instead — see check_traefik_plugin.sh"
+  info "This bouncer type (fbonalair/freifunkmuc-style) predates CrowdSec's AppSec/WAF component.
+CrowdSec's own docs now recommend the Traefik plugin bouncer instead — see check_traefik_plugin.sh"
   exit 0
 else
-  info "No legacy-style bouncer found at ${TRAEFIK_BOUNCER_URL}"
-  info "This does NOT confirm the modern plugin bouncer is running — it just means this specific"
-  info "fingerprint didn't match. If TRAEFIK_API_URL is set, check_traefik_plugin.sh can confirm that instead."
+  info "No legacy-style bouncer found at ${TRAEFIK_BOUNCER_URL}
+This does NOT confirm the modern plugin bouncer is running — it just means this specific
+fingerprint didn't match. If TRAEFIK_API_URL is set, check_traefik_plugin.sh can confirm that instead."
   exit 0
 fi
