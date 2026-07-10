@@ -25,16 +25,40 @@ services:
       - --accesslog.filepath=/var/log/traefik/access.log
       - --experimental.plugins.crowdsec-bouncer.modulename=github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
       - --experimental.plugins.crowdsec-bouncer.version=v1.4.0
+      # Enables Traefik's own API — this is what lets the troubleshooter's
+      # check_bouncer_type.sh positively confirm the plugin bouncer is
+      # actually registered (TRAEFIK_API_URL). There's no other way to
+      # confirm it: the plugin runs in-process inside Traefik with no
+      # separate service to ping, unlike the legacy ForwardAuth bouncer.
+      # A dedicated internal-only entrypoint, not --api.insecure=true
+      # (which would expose it on every entrypoint, public ones included).
+      - --api.dashboard=true
+      - --entryPoints.internal.address=:8080
     labels:
       - "traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.enabled=true"
       - "traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.crowdseclapikey=${BOUNCER_API_KEY}"
+      # Binds api@internal to the "internal" entrypoint only — that
+      # entrypoint has no `ports:` publish below, so it's reachable
+      # exclusively from containers on the shared `crowdsec` docker
+      # network (the troubleshooter included, once it joins the same
+      # network — see docker-compose.troubleshooter-addon.yml). The
+      # ipallowlist below is defense-in-depth on top of that network
+      # boundary, not the only thing protecting it; adjust the
+      # sourcerange to your actual docker network subnet (`docker network
+      # inspect crowdsec` to find it) if you rely on it directly.
+      - "traefik.http.routers.traefik-internal-api.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.traefik-internal-api.entrypoints=internal"
+      - "traefik.http.routers.traefik-internal-api.service=api@internal"
+      - "traefik.http.routers.traefik-internal-api.middlewares=internal-only"
+      - "traefik.http.middlewares.internal-only.ipallowlist.sourcerange=172.16.0.0/12"
     volumes:
       - traefik-logs:/var/log/traefik
     networks: [crowdsec, proxy]
-    # Note: no ports published for the dashboard/ping API here — reach them
-    # via the router-protected domain path only, or bind to 127.0.0.1 if you
-    # specifically want host-local curl access. See the compose-hardening
-    # check in the troubleshooter for exactly this class of finding.
+    # No ports published for the dashboard/API — it's reachable at
+    # http://traefik:8080 from any container on the `crowdsec` network
+    # (internal Docker networking only), never from outside. See the
+    # compose-hardening check in the troubleshooter for exactly this
+    # class of finding if that ever changes.
 
 networks:
   crowdsec: {}
