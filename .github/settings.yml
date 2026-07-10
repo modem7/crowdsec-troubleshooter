@@ -8,7 +8,7 @@ repository:
     setups — a wellness check, an IP block checker, and an optional live
     "does blocking actually work" test. No daemon, no docker.sock, no host
     networking, no capabilities required.
-  homepage: https://modem7.com
+  homepage: https://hub.docker.com/repository/docker/modem7/crowdsec-troubleshooter
   topics: crowdsec, traefik, docker, docker-compose, security, homelab, self-hosted, bash, shellcheck, cybersecurity
   private: false
   has_issues: true
