@@ -53,7 +53,7 @@ login_response="$(curl -fsS -X POST --max-time 10 \
   -d "{\"machine_id\":\"${MACHINE_LOGIN}\",\"password\":\"${MACHINE_PASSWORD}\"}" \
   "${CROWDSEC_LAPI_URL}/v1/watchers/login" 2>/dev/null)"
 
-MACHINE_TOKEN="$(echo "$login_response" | jq -r '.token // empty' 2>/dev/null)"
+MACHINE_TOKEN="$(jq -r '.token // empty' <<<"$login_response" 2>/dev/null)"
 if [[ -z "$MACHINE_TOKEN" ]]; then
   crit "Machine login failed — credential may be wrong or deleted. Check: docker exec crowdsec cscli machines list"
   exit 1

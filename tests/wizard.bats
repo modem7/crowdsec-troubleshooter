@@ -308,10 +308,12 @@ EOF
   docker() {
     case "$1" in
       ps) printf 'mycontainer\tcrowdsecurity/crowdsec:v1.6.3\n' ;;
-      inspect)
-        if [[ "$3" == *working_dir* ]]; then echo "$tmpdir"
-        elif [[ "$3" == *config_files* ]]; then echo "docker-compose.yml"
-        fi ;;
+      # Single combined `docker inspect` call now (see
+      # detect_crowdsec_compose_file's own comment for why) — the mock
+      # returns both labels tab-separated in one line, matching the real
+      # --format template's actual output shape (verified against a real
+      # container, not assumed).
+      inspect) printf '%s\tdocker-compose.yml\n' "$tmpdir" ;;
     esac
   }
   result="$(detect_crowdsec_compose_file)"
@@ -325,10 +327,7 @@ EOF
   docker() {
     case "$1" in
       ps) printf 'mycontainer\tcrowdsecurity/crowdsec\n' ;;
-      inspect)
-        if [[ "$3" == *working_dir* ]]; then echo "/some/unrelated/dir"
-        elif [[ "$3" == *config_files* ]]; then echo "${tmpdir}/custom.yml"
-        fi ;;
+      inspect) printf '/some/unrelated/dir\t%s/custom.yml\n' "$tmpdir" ;;
     esac
   }
   result="$(detect_crowdsec_compose_file)"
@@ -342,10 +341,11 @@ EOF
   docker() {
     case "$1" in
       ps) printf 'mycontainer\tcrowdsecurity/crowdsec\n' ;;
-      inspect)
-        if [[ "$3" == *working_dir* ]]; then echo "$tmpdir"
-        elif [[ "$3" == *config_files* ]]; then echo "<no value>"
-        fi ;;
+      # <no value> here specifically to keep covering that defensive
+      # sentinel check, even though a real `index`-based template lookup
+      # on a genuinely absent label renders as an empty string instead
+      # (verified separately — see the next test down for that case).
+      inspect) printf '%s\t<no value>\n' "$tmpdir" ;;
     esac
   }
   result="$(detect_crowdsec_compose_file)"
@@ -368,7 +368,11 @@ EOF
   docker() {
     case "$1" in
       ps) printf 'mycontainer\tcrowdsecurity/crowdsec\n' ;;
-      inspect) echo "<no value>" ;;
+      # Empty string, not "<no value>" — this is what a real `docker
+      # inspect --format` with `index` actually renders for a genuinely
+      # missing label (verified against a real container: dot-notation
+      # produces "<no value>", `index` produces "").
+      inspect) printf '\t\n' ;;
     esac
   }
   run detect_crowdsec_compose_file
@@ -379,10 +383,7 @@ EOF
   docker() {
     case "$1" in
       ps) printf 'mycontainer\tcrowdsecurity/crowdsec\n' ;;
-      inspect)
-        if [[ "$3" == *working_dir* ]]; then echo "/definitely/does/not/exist"
-        elif [[ "$3" == *config_files* ]]; then echo "docker-compose.yml"
-        fi ;;
+      inspect) printf '/definitely/does/not/exist\tdocker-compose.yml\n' ;;
     esac
   }
   run detect_crowdsec_compose_file

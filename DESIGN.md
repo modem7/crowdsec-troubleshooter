@@ -107,6 +107,39 @@ strength (API key type) and file-mount access — not capabilities.
   names `-f -` as the documented escape hatch. Caught by the user actually
   running the command against their live CrowdSec instance, not by
   reasoning about what `cscli` might do.
+- **There is no `POST /v1/decisions`.** `test_live_block.sh` originally
+  POSTed a bare decisions array straight to `/v1/decisions` to create the
+  test ban — this had shipped unverified and failed the first time a real
+  user ran it against a real LAPI, with `curl -f` swallowing the actual
+  error body so all they saw was a useless generic "check your
+  credentials" message. Traced against `crowdsecurity/crowdsec`'s actual
+  Go source rather than guessing further
+  (`pkg/apiclient/decisions_service.go`,
+  `cmd/crowdsec-cli/clidecision/decisions.go`): that route is GET
+  (list)/DELETE (remove) only. `cscli decisions add` doesn't call any such
+  endpoint either — it builds a full synthetic `Alert` with the decision
+  embedded and POSTs that to `/v1/alerts`, success is `201`, not `200`.
+  Fixed by matching `models.Alert`/`models.Decision`'s actual required
+  fields exactly, confirmed against the real struct definitions, not
+  guessed at. Same lesson as the bouncer-listing correction above, learned
+  again the expensive way: verify the real API surface before writing a
+  request against it, even when the shape looks obvious.
+- **`docker inspect --format`'s missing-label rendering depends on the
+  template syntax used, not just on the label being absent.** While
+  combining two separate `docker inspect` calls into one (same container,
+  two labels, no reason to round-trip the daemon twice — see
+  `wizard.sh`'s `detect_crowdsec_compose_file()`), verified the combined
+  `--format` template against a real running container before relying on
+  it, which surfaced something the *existing* code had already gotten
+  subtly wrong: a label accessed via `{{ index .Config.Labels "..." }}`
+  renders as an **empty string** when absent, not the `"<no value>"` text
+  dot-notation (`{{ .Config.Labels.Foo }}`) would produce. The existing
+  `"<no value>"` sentinel check was therefore already dead code against
+  real Docker output — harmless only because the accompanying `-z` check
+  happens to catch the same case correctly. Left both checks in place
+  (not a behavior change to make while doing an unrelated optimization)
+  but documented here so it isn't mistaken for intentional defensive
+  coverage later.
 
 ## Why no daemon mode
 
