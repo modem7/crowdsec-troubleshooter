@@ -35,6 +35,10 @@ services:
       # - ./firewall-bouncer.log:/mnt/bouncer/firewall-bouncer.log:ro
       # - ./docker-compose.yml:/mnt/compose/docker-compose.yml:ro
       # - $USERDIR/Crowdsec/config/acquis.yaml:/mnt/crowdsec/acquis.yaml:ro
+      # Optional — confirms (rather than just recommends) a cscli hub
+      # update/upgrade cron job; the recommendation itself always prints
+      # regardless of this mount:
+      # - ./crontab:/mnt/cron/crontab:ro
     networks: [crowdsec]
     profiles: ["troubleshoot"]
     # Run with: docker compose --profile troubleshoot run --rm crowdsec-troubleshooter
