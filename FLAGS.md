@@ -26,6 +26,20 @@ reference for the manual `docker run` route, and for wizard.sh's own flags.
 | `CROWDSEC_VERSION_HINT` | optional | CVE checking against a hardcoded, unmaintained list — see caveat below | — |
 | Tier-3 `-v` mounts | 3 | `DOCKER-USER` chain evidence, duplicate-acquisition detection, syslog hinting, compose-file hardening | Read-only host file mounts, see below |
 
+## `issues` — offline known-issues reference
+
+```bash
+docker run --rm modem7/crowdsec-troubleshooter issues
+docker run --rm modem7/crowdsec-troubleshooter issues search bridge
+docker run --rm modem7/crowdsec-troubleshooter issues <id>
+```
+
+No flags, no env vars, no `CROWDSEC_LAPI_URL` — the only action in this tool
+that needs literally nothing set. Browses `lib/known_issues.sh`, a curated
+knowledge base of common CrowdSec/CrowdSec+Traefik problems baked into the
+image at build time, not fetched at runtime. See the README's "Known-issues
+reference" section for the full explanation.
+
 ## Tier 0 — nothing but `CROWDSEC_LAPI_URL`
 
 ```bash
