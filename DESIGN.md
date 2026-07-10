@@ -197,6 +197,31 @@ Two decisions worth recording:
   surface for whoever next tried to source this file from a function
   rather than top-level `troubleshoot.sh`.
 
+## check_hub_update_cron.sh always prints, doesn't skip()
+
+Every other optional check in this tool uses the 🔒 `skip()` pattern when
+its input isn't configured — a locked-looking block deferred to the
+"Optional checks" footer, since those checks genuinely don't apply to
+everyone (no Traefik in the stack means the Traefik checks are noise, not
+advice). The `cscli hub update && cscli hub upgrade` cron recommendation
+is different in kind: it's universally relevant CrowdSec operational
+advice, true for every installation regardless of what else is configured.
+Burying it in the same footer as setup-specific optional integrations
+would make it easy to miss the one recommendation that applies to
+literally everyone. So it always prints a plain `info` line, tier0, no
+mount required — and only upgrades to an actual confirmed/missing finding
+if a crontab happens to be mounted, same optional-enhancement shape as
+every other tier3 check, just without the hard gate on doing anything at
+all.
+
+Also added `check_ban_stats.sh` (tier1) alongside it: unlike `check-ip`,
+it needs no argument (`GET /v1/decisions` with no filter, same read path,
+same credential), so it's the one tier1 check that can safely join the
+automatic sweep once a bouncer key is present, rather than staying a named
+action. `run_checks_grouped()` in `troubleshoot.sh` was generalized to
+accept a single file as well as a directory to support this without
+duplicating its grouping/skip-deferral logic.
+
 ## Why no init system (s6/tini/dumb-init)
 
 Considered when the question of signal handling for `test_live_block.sh`'s

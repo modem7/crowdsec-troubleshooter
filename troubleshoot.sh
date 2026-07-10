@@ -58,12 +58,16 @@ case "${1:-}" in
     ;;
 esac
 
-# run_checks_grouped <dir> — runs every check script in <dir>, printing
-# actual results (OK/WARN/CRIT/INFO) as they complete, but holding back the
-# 🔒 "not configured" reminders to print together under one header at the
-# end instead of interleaved with real results. The two were previously
-# indistinguishable at a glance in the same flat stream — this keeps them
-# structurally separate without changing what any individual check does.
+# run_checks_grouped <dir-or-single-check.sh> — runs every check script in
+# <dir> (or just the one script, if given a file instead of a directory —
+# used by run_tier1() for check_ban_stats.sh, the one tier1 check that
+# needs no argument and so can join an automatic sweep, unlike check-ip),
+# printing actual results (OK/WARN/CRIT/INFO) as they complete, but holding
+# back the 🔒 "not configured" reminders to print together under one header
+# at the end instead of interleaved with real results. The two were
+# previously indistinguishable at a glance in the same flat stream — this
+# keeps them structurally separate without changing what any individual
+# check does.
 #
 # Trade-off: each check's output has to be fully captured before it can be
 # classified, so a check with an internal wait (check_metrics_liveness.sh's
@@ -71,9 +75,15 @@ esac
 # appears all at once when the check finishes. Worth it for the readability
 # win; nothing else in this tool has a comparable internal delay.
 run_checks_grouped() {
-  local dir="$1"
+  local target="$1"
+  local -a checks=()
+  if [[ -d "$target" ]]; then
+    checks=("$target"/*.sh)
+  else
+    checks=("$target")
+  fi
   local locked="" out status overall_status=0
-  for check in "$dir"/*.sh; do
+  for check in "${checks[@]}"; do
     out="$(bash "$check")"
     status=$?
     # Capturing output via command substitution above already overwrote $?
@@ -100,7 +110,14 @@ run_tier0() {
 }
 
 run_tier1() {
-  info "(tier 1 checks are named actions — e.g. 'check-ip <ip>' — not part of the default sweep)"
+  # check_ban_stats.sh needs no argument (unlike check-ip), so it's the one
+  # tier1 check that can safely join an automatic sweep — it degrades to
+  # its own 🔒 skip block via run_checks_grouped exactly like tier0/tier3
+  # checks do when HAS_BOUNCER_KEY is false.
+  run_checks_grouped "checks/tier1_bouncer_key/check_ban_stats.sh"
+  local status=$?
+  info "check-ip <ip> is a separate named action — not part of the automatic sweep, since it needs an IP argument"
+  return "$status"
 }
 
 run_tier2() {
