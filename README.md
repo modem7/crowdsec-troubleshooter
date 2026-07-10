@@ -53,10 +53,25 @@ docker run --rm -e CROWDSEC_LAPI_URL=... \
 
 Typing out `CROWDSEC_LAPI_URL`/`CROWDSEC_LAPI_KEY`/`CROWDSEC_MACHINE_CREDENTIALS_FILE`
 by hand every run gets old fast, especially with the `-v` mount the last
-one needs. `wizard.sh` (Linux only — clone the repo, it runs on the host,
-not inside the container) prompts for whatever a given action actually
-needs, remembers what you enter in `./.crowdsec-troubleshooter.env` for
-next time, and launches the real `docker run` for you:
+one needs. `wizard.sh` (Linux only — runs on the host, not inside the
+container) prompts for whatever a given action actually needs, remembers
+what you enter in `./.crowdsec-troubleshooter.env` for next time, and
+launches the real `docker run` for you.
+
+No clone needed — run it straight from the repo:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/modem7/crowdsec-troubleshooter/master/wizard.sh | bash -s -- wellness
+```
+
+`-s --` matters: without it, `bash` tries to open a file literally named
+`wellness` instead of passing it as an argument to the piped script. Every
+prompt reads from `/dev/tty` explicitly rather than the script's own
+stdin (which the pipe above is using to deliver the script itself) — this
+is what makes prompting actually work over a pipe instead of every answer
+silently coming back empty.
+
+Or clone the repo and run it locally, same commands either way:
 
 ```bash
 ./wizard.sh                                        # interactive menu
@@ -88,6 +103,11 @@ Nothing needs `docker.sock`, `--privileged`, `NET_ADMIN`/`NET_RAW`, or host
 networking, at any tier. See [`DESIGN.md`](./DESIGN.md) for the reasoning
 behind every one of these boundaries — most of them exist because an earlier
 draft of this tool assumed more access than it turned out to actually need.
+
+For the full list of every `-e` var, `-v` mount, and CLI flag this tool
+reads — what each one unlocks, what's required alongside it, and the exact
+`docker run` invocation for each tier — see
+[`FLAGS.md`](./FLAGS.md).
 
 ## Why no daemon mode
 

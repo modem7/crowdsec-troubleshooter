@@ -38,6 +38,10 @@ steps:
       compress: true
       build_args:
         BUILDKIT_INLINE_CACHE: "1"
+        # Bakes the actual commit SHA into the image (see Dockerfile) so
+        # check_image_freshness.sh has something real to compare against
+        # GitHub's latest master commit, instead of guessing.
+        GIT_SHA: ${CI_COMMIT_SHA}
       cache_from:
         - type=registry\,ref=${CI_REPO}:latest
       platforms: linux/amd64,linux/arm64/v8
