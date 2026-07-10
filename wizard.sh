@@ -332,6 +332,18 @@ resolve_compose_vars() {
   for var in $(echo "$text" | grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*\}?' | tr -d '${}' | sort -u || true); do
     val="$(grep -E "^${var}=" "$env_file" | head -1 | sed -E "s/^${var}=//" || true)"
     [[ -z "$val" ]] && continue
+    # A .env value is very often quoted (DOMAINNAME="example.com") — that's
+    # valid Compose .env syntax, and Compose itself strips the quotes
+    # before substitution. This didn't: a real user's .env had a quoted
+    # DOMAINNAME, and the raw quotes rode straight through into the
+    # suggested URL (https://traefik."example.com"). Only strips a pair
+    # that actually wraps the whole value, matching quotes on both ends —
+    # a stray single quote or a value with internal quotes is left alone.
+    if [[ "$val" == \"*\" && "$val" == *\" ]]; then
+      val="${val#\"}"; val="${val%\"}"
+    elif [[ "$val" == \'*\' && "$val" == *\' ]]; then
+      val="${val#\'}"; val="${val%\'}"
+    fi
     result="${result//\$\{${var}\}/$val}"
     result="${result//\$${var}/$val}"
   done
