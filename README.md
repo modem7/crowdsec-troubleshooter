@@ -29,10 +29,11 @@ docker run --rm -e CROWDSEC_LAPI_URL=http://crowdsec:8080 modem7/crowdsec-troubl
 ```
 
 That alone runs the tier-0 checks — LAPI liveness, log-parsing activity,
-bouncer-type fingerprinting, and a heuristic on the LAPI URL itself — with
-**zero credentials of any kind**. Everything else in this tool is additive
-from there; run it once with nothing configured and it'll tell you exactly
-what each extra check needs, why, and how to add (or remove) it.
+bouncer-type fingerprinting, a heuristic on the LAPI URL itself, and a
+`cscli hub update`/`upgrade` cron recommendation — with **zero credentials
+of any kind**. Everything else in this tool is additive from there; run it
+once with nothing configured and it'll tell you exactly what each extra
+check needs, why, and how to add (or remove) it.
 
 ```bash
 # Check a specific IP's ban status and reason
@@ -90,6 +91,15 @@ comment/PR/release that actually fixed it), and every link is verified to
 resolve before being added. Pulling a newer image is the only thing needed
 to refresh it.
 
+Coverage as of this writing: **29 entries** — run `troubleshoot.sh issues`
+to list them all — drawn from an initial ~60-candidate research pass across
+the highest-engagement issues in those three repos, filtered down to what's
+actually Docker-relevant and not already handled by an existing check —
+see `DESIGN.md`'s "Known-issues KB as data" section for the filtering
+criteria. `lib/known_issues.sh`'s own `KB_VERSION` line is the source of
+truth for when this was last refreshed; update the count here whenever
+entries are added or removed.
+
 ### Or skip the `-e` flags entirely: `wizard.sh`
 
 Typing out `CROWDSEC_LAPI_URL`/`CROWDSEC_LAPI_KEY`/`CROWDSEC_MACHINE_CREDENTIALS_FILE`
@@ -136,7 +146,7 @@ file is `chmod 600`'d; treat it like any other credentials file and
 | Tier | Unlocks with | What it adds |
 |---|---|---|
 | 0 | Nothing beyond `CROWDSEC_LAPI_URL` | LAPI liveness, log-parsing activity, bouncer-type fingerprint (legacy or modern plugin), LAPI-URL scope heuristic, optional auth-bypass comparison |
-| 1 | A dedicated **read-only bouncer key** | `check-ip` — the block checker |
+| 1 | A dedicated **read-only bouncer key** | Ban-count stats (automatic), `check-ip` — the block checker |
 | 2 | A **machine credential** (read-write) | Live block/unban test, AppSec probe |
 | 3 | **Read-only host file mounts** | `DOCKER-USER` chain evidence, duplicate-acquisition detection, syslog hinting, compose-file hardening audit |
 
@@ -149,6 +159,65 @@ For the full list of every `-e` var, `-v` mount, and CLI flag this tool
 reads — what each one unlocks, what's required alongside it, and the exact
 `docker run` invocation for each tier — see
 [`FLAGS.md`](./FLAGS.md).
+
+## Bare-metal / non-Docker CrowdSec installs
+
+This tool always runs as a container itself (`docker run --rm ...`), but
+the CrowdSec it's checking doesn't have to — tiers 0–2 are pure HTTP calls
+to LAPI, so a `cscli`/apt-installed CrowdSec works exactly the same as a
+Dockerized one; point `CROWDSEC_LAPI_URL` at wherever LAPI actually
+listens (a LAN IP/hostname, most likely, since there's no shared
+docker-compose network to use a service name on — `check_lapi_url_scope.sh`
+flagging that pattern in this case is expected, not a problem). `wizard.sh`
+already degrades gracefully too: `detect_crowdsec_compose_file()` only
+looks for a *running Docker container* image-matching `crowdsecurity/crowdsec`,
+finds nothing on a bare-metal install, and falls straight through to its
+normal manual-prompt flow — no separate mode or flag needed.
+
+The only thing that changes is which **host paths** to bind-mount for tier
+3, since a package install uses different real paths than a docker-compose
+volume layout. Verified against CrowdSec's actual default `config.yaml`
+and the firewall bouncer's own packaged config, not assumed:
+
+| Tier 3 check | Docker-compose example (existing) | Bare-metal equivalent |
+|---|---|---|
+| `check_docker_chain.sh` (firewall bouncer config+log) | `./firewall-bouncer.yaml:/mnt/bouncer/firewall-bouncer.yaml:ro` + `./firewall-bouncer.log:/mnt/bouncer/firewall-bouncer.log:ro` | `/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml:/mnt/bouncer/firewall-bouncer.yaml:ro` + `/var/log/crowdsec-firewall-bouncer.log:/mnt/bouncer/firewall-bouncer.log:ro` |
+| `check_acquisition_dupes.sh` | `.../config/acquis.yaml:/mnt/crowdsec/acquis.yaml:ro` | `/etc/crowdsec/acquis.yaml:/mnt/crowdsec/acquis.yaml:ro` (+ `/etc/crowdsec/acquis.d:/mnt/crowdsec/acquis.d:ro` if you use drop-in files there) |
+| `check_config_syslog_hint.sh` | `.../config/log:/mnt/crowdsec:ro` (whole directory) | `/var/log/crowdsec.log:/mnt/crowdsec/crowdsec.log:ro` — mount just the one file directly rather than all of `/var/log`, since that's all this check reads anyway |
+| `check_compose_hardening.sh` | `./docker-compose.yml:/mnt/compose/docker-compose.yml:ro` | Doesn't apply — there's no compose file to audit on a pure bare-metal install. Just don't mount it; the check reports its usual 🔒 skip block, same as any other unconfigured optional check. |
+
+Both `/etc/crowdsec/...` and `/var/log/...` above assume CrowdSec's default
+`log_dir`/config locations from a standard apt/binary install — if you've
+customized `common.log_dir` in your own `config.yaml`, use that path
+instead.
+
+### Running both a bare-metal and a Dockerized instance side by side
+
+A genuinely common setup, not a fringe case: a bare-metal CrowdSec handling
+host-level detection (SSH brute-force, syslog, journalctl) alongside a
+*separate* Dockerized instance dedicated to Traefik (so its container can
+sit on the same docker network as the Traefik bouncer). These are two
+fully independent CrowdSec engines, each with its own LAPI, its own
+database, its own bouncers — not one deployment split across two places.
+Confirm which is which with `cscli version` (bare-metal) vs
+`docker exec <container> cscli version` (Dockerized) — the `Platform:`
+field in the output says `linux` or `docker` accordingly.
+
+Run this tool **once per instance**, not once total — there's no
+combined-view mode, since they're genuinely separate engines with separate
+answers to "is this one working." Point `CROWDSEC_LAPI_URL` at whichever
+instance you're checking, and use the matching column from the table
+above: bare-metal paths for the apt instance, the original docker-compose
+paths for the containerized one.
+
+One auto-detection gotcha in this exact setup: `wizard.sh`'s
+`detect_crowdsec_compose_file()` looks for a *running Docker container*
+image-matching `crowdsecurity/crowdsec` — with both instances present,
+it'll always find the Dockerized one (the bare-metal instance has no
+container to detect at all), even if you actually want to check the
+bare-metal instance this run. Type `skip` (or `none`) when it prompts
+"use it to suggest values?" to decline the auto-detected compose file and
+enter bare-metal values by hand instead.
 
 ## Why no daemon mode
 
