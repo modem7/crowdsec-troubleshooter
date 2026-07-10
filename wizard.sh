@@ -157,6 +157,47 @@ detect_host_ip() {
   echo "$ip"
 }
 
+# ---- compose-file auto-discovery via the running container itself ----
+# Rather than only asking for a compose file path, try to find the actual
+# one first: locate whichever container is actually running a
+# crowdsecurity/crowdsec image (never assume a container name — grep the
+# real `docker ps` output for the image instead), then read the
+# com.docker.compose.project.working_dir / .config_files labels Compose
+# stamps on every container it creates. Prints nothing and returns 1 on any
+# failure (docker unreachable, no such container, container not managed by
+# Compose, file not actually readable) — the caller falls back to the
+# existing cwd-guess-then-ask behavior exactly as if this didn't exist.
+detect_crowdsec_compose_file() {
+  local container
+  container="$(docker ps --format '{{.Names}}\t{{.Image}}' 2>/dev/null | awk -F'\t' '$2 ~ /^crowdsecurity\/crowdsec(:|$)/ {print $1; exit}')"
+  [[ -z "$container" ]] && return 1
+
+  local working_dir
+  working_dir="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$container" 2>/dev/null)"
+  [[ -z "$working_dir" || "$working_dir" == "<no value>" ]] && return 1
+
+  # config_files can be a comma-separated list (multiple -f flags) and each
+  # entry may be relative to working_dir or already absolute — take the
+  # first one, falling back to the plain default filename if the label
+  # itself isn't present (older Compose versions may not set it).
+  local config_files first_file candidate
+  config_files="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' "$container" 2>/dev/null)"
+  first_file="${config_files%%,*}"
+
+  if [[ -n "$first_file" && "$first_file" != "<no value>" ]]; then
+    if [[ "$first_file" == /* ]]; then
+      candidate="$first_file"
+    else
+      candidate="${working_dir}/${first_file}"
+    fi
+  else
+    candidate="${working_dir}/docker-compose.yml"
+  fi
+
+  [[ -r "$candidate" ]] || return 1
+  echo "$candidate"
+}
+
 # ---- docker-compose parsing helpers ----
 # extract_service_block <file> <image-regex> — prints the full indented
 # block for whichever service's `image:` line matches, by finding the
@@ -367,8 +408,19 @@ load_creds_file "$CREDS_FILE"
 
 if [[ -z "$COMPOSE_FILE" ]]; then
   default_compose=""
-  [[ -f ./docker-compose.yml ]] && default_compose="./docker-compose.yml"
-  [[ -f ./docker-compose.yaml ]] && default_compose="./docker-compose.yaml"
+  # Try to actually find it before just asking: locate the running
+  # crowdsec container and read Compose's own working_dir/config_files
+  # labels off it — far more likely to be right than guessing from cwd,
+  # since it reflects what's actually running rather than where this
+  # wizard happens to have been launched from. Falls straight through to
+  # the cwd guess (existing behavior) on any failure.
+  if default_compose="$(detect_crowdsec_compose_file)"; then
+    note "Found the running crowdsec container's own compose file: ${default_compose}"
+  elif [[ -f ./docker-compose.yml ]]; then
+    default_compose="./docker-compose.yml"
+  elif [[ -f ./docker-compose.yaml ]]; then
+    default_compose="./docker-compose.yaml"
+  fi
   if [[ -n "$default_compose" ]]; then
     # A non-empty default means blank Enter always accepts it — that leaves
     # no way to decline a compose file that just happens to be sitting in

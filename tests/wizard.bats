@@ -102,3 +102,98 @@ EOF
   [ "${PREV[CROWDSEC_LAPI_URL]}" = "http://saved:8080" ]
   [ "${PREV[CROWDSEC_LAPI_KEY]}" = "abc123" ]
 }
+
+# detect_crowdsec_compose_file calls the real `docker` binary, which isn't
+# assumed to be installed wherever these bats tests run — stubbed with a
+# bash function of the same name rather than skipped, so the actual
+# label-parsing/path-resolution logic still gets exercised. See the
+# manual claude-vm verification (a real container, real labels, real
+# `docker inspect`) in the commit/PR notes for the real-binary check this
+# can't cover.
+
+@test "detect_crowdsec_compose_file resolves a relative config_files path against working_dir" {
+  tmpdir="$(mktemp -d)"
+  touch "${tmpdir}/docker-compose.yml"
+  docker() {
+    case "$1" in
+      ps) printf 'mycontainer\tcrowdsecurity/crowdsec:v1.6.3\n' ;;
+      inspect)
+        if [[ "$3" == *working_dir* ]]; then echo "$tmpdir"
+        elif [[ "$3" == *config_files* ]]; then echo "docker-compose.yml"
+        fi ;;
+    esac
+  }
+  result="$(detect_crowdsec_compose_file)"
+  rm -rf "$tmpdir"
+  [ "$result" = "${tmpdir}/docker-compose.yml" ]
+}
+
+@test "detect_crowdsec_compose_file accepts an absolute config_files path as-is" {
+  tmpdir="$(mktemp -d)"
+  touch "${tmpdir}/custom.yml"
+  docker() {
+    case "$1" in
+      ps) printf 'mycontainer\tcrowdsecurity/crowdsec\n' ;;
+      inspect)
+        if [[ "$3" == *working_dir* ]]; then echo "/some/unrelated/dir"
+        elif [[ "$3" == *config_files* ]]; then echo "${tmpdir}/custom.yml"
+        fi ;;
+    esac
+  }
+  result="$(detect_crowdsec_compose_file)"
+  rm -rf "$tmpdir"
+  [ "$result" = "${tmpdir}/custom.yml" ]
+}
+
+@test "detect_crowdsec_compose_file falls back to docker-compose.yml when config_files label is absent" {
+  tmpdir="$(mktemp -d)"
+  touch "${tmpdir}/docker-compose.yml"
+  docker() {
+    case "$1" in
+      ps) printf 'mycontainer\tcrowdsecurity/crowdsec\n' ;;
+      inspect)
+        if [[ "$3" == *working_dir* ]]; then echo "$tmpdir"
+        elif [[ "$3" == *config_files* ]]; then echo "<no value>"
+        fi ;;
+    esac
+  }
+  result="$(detect_crowdsec_compose_file)"
+  rm -rf "$tmpdir"
+  [ "$result" = "${tmpdir}/docker-compose.yml" ]
+}
+
+@test "detect_crowdsec_compose_file fails cleanly when no crowdsec container is running" {
+  docker() {
+    case "$1" in
+      ps) printf 'somethingelse\tnginx:latest\n' ;;
+    esac
+  }
+  run detect_crowdsec_compose_file
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "detect_crowdsec_compose_file fails cleanly when the container isn't Compose-managed (no working_dir label)" {
+  docker() {
+    case "$1" in
+      ps) printf 'mycontainer\tcrowdsecurity/crowdsec\n' ;;
+      inspect) echo "<no value>" ;;
+    esac
+  }
+  run detect_crowdsec_compose_file
+  [ "$status" -ne 0 ]
+}
+
+@test "detect_crowdsec_compose_file fails cleanly when the resolved file isn't actually readable" {
+  docker() {
+    case "$1" in
+      ps) printf 'mycontainer\tcrowdsecurity/crowdsec\n' ;;
+      inspect)
+        if [[ "$3" == *working_dir* ]]; then echo "/definitely/does/not/exist"
+        elif [[ "$3" == *config_files* ]]; then echo "docker-compose.yml"
+        fi ;;
+    esac
+  }
+  run detect_crowdsec_compose_file
+  [ "$status" -ne 0 ]
+}
