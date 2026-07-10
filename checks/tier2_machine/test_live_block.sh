@@ -9,6 +9,16 @@
 # Safety: the trap on EXIT guarantees the test decision is removed even if
 # the script is killed, the target is unreachable, or anything else goes
 # wrong partway through — this must never leave a stray ban behind.
+#
+# Credentials file holds login+password, NOT a ready bearer token. An
+# earlier version read a `.token` field directly out of the credentials
+# file, but `cscli machines add --auto` only ever prints a login/password
+# pair — there's no ready-made token to save. A machine authenticates by
+# POSTing that login+password to /v1/watchers/login, which returns a
+# short-lived JWT. Doing that exchange once at setup time and saving the
+# resulting token would work for a few hours and then silently start
+# failing, so instead we mint a fresh token on every run, same as a real
+# CrowdSec agent does.
 
 set -uo pipefail
 # shellcheck source=../../lib/common.sh
@@ -28,18 +38,32 @@ done
 if [[ "${HAS_MACHINE_CREDS:-false}" != true ]]; then
   skip "Checking whether bans actually block traffic (recommended — the biggest single proof of health)" \
     "Proving blocking really works means briefly creating a real (tiny, seconds-long) test ban and removing it again. The read-only key alone can't do that — only a 'machine' credential can. Treat it like an admin password, not like the block-checker key: it CAN create/delete real bans; it CANNOT touch Docker, your host, or anything outside CrowdSec's own ban list." \
-    "Run on your CrowdSec server: docker exec crowdsec cscli machines add troubleshooter --auto — save the output as a file, point CROWDSEC_MACHINE_CREDENTIALS_FILE at it" \
+    "Run on your CrowdSec server: docker exec crowdsec cscli machines add troubleshooter --auto — it prints a Login/Password pair. Save them as JSON ({\"login\":\"...\",\"password\":\"...\"}), then mount that file into this container with -v and point CROWDSEC_MACHINE_CREDENTIALS_FILE at the in-container path (see setup/register_machine.sh for the full walkthrough)" \
     "Run on your CrowdSec server: docker exec crowdsec cscli machines delete troubleshooter — then delete the credentials file and unset CROWDSEC_MACHINE_CREDENTIALS_FILE"
   exit 0
 fi
 
-MACHINE_TOKEN="$(jq -r '.token // empty' "$CROWDSEC_MACHINE_CREDENTIALS_FILE" 2>/dev/null)"
-if [[ -z "$MACHINE_TOKEN" ]]; then
-  crit "Couldn't read a valid token from CROWDSEC_MACHINE_CREDENTIALS_FILE"
+MACHINE_LOGIN="$(jq -r '.login // empty' "$CROWDSEC_MACHINE_CREDENTIALS_FILE" 2>/dev/null)"
+MACHINE_PASSWORD="$(jq -r '.password // empty' "$CROWDSEC_MACHINE_CREDENTIALS_FILE" 2>/dev/null)"
+if [[ -z "$MACHINE_LOGIN" || -z "$MACHINE_PASSWORD" ]]; then
+  crit "Couldn't read login/password from CROWDSEC_MACHINE_CREDENTIALS_FILE"
+  info "Expected JSON: {\"login\": \"...\", \"password\": \"...\"} — see setup/register_machine.sh"
   exit 1
 fi
 
-TEST_IP="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo "")"
+step "Logging in as machine '${MACHINE_LOGIN}' to mint a fresh token..."
+login_response="$(curl -fsS -X POST --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "{\"machine_id\":\"${MACHINE_LOGIN}\",\"password\":\"${MACHINE_PASSWORD}\"}" \
+  "${CROWDSEC_LAPI_URL}/v1/watchers/login" 2>/dev/null)"
+
+MACHINE_TOKEN="$(echo "$login_response" | jq -r '.token // empty' 2>/dev/null)"
+if [[ -z "$MACHINE_TOKEN" ]]; then
+  crit "Machine login failed — credential may be wrong or deleted. Check: docker exec crowdsec cscli machines list"
+  exit 1
+fi
+
+TEST_IP="$(curl -fsS --max-time 5 "${IP_ECHO_URL:-https://api.ipify.org}" 2>/dev/null || echo "")"
 if [[ -z "$TEST_IP" ]]; then
   warn "Couldn't determine this container's own outbound IP — skipping the live test"
   info "This check needs to know its own public/routable IP to ban and then verify against"

@@ -39,7 +39,7 @@ setup() {
 @test "HAS_MACHINE_CREDS is true when the credentials file exists and is readable" {
   export CROWDSEC_LAPI_URL="http://crowdsec:8080"
   tmpfile="$(mktemp)"
-  echo '{"token":"x"}' > "$tmpfile"
+  echo '{"login":"x","password":"y"}' > "$tmpfile"
   export CROWDSEC_MACHINE_CREDENTIALS_FILE="$tmpfile"
   source capability_check.sh
   rm -f "$tmpfile"
@@ -57,7 +57,7 @@ setup() {
   [ "$DETECTED_TIER" = "1" ]
 
   tmpfile="$(mktemp)"
-  echo '{"token":"x"}' > "$tmpfile"
+  echo '{"login":"x","password":"y"}' > "$tmpfile"
   export CROWDSEC_MACHINE_CREDENTIALS_FILE="$tmpfile"
   source capability_check.sh
   rm -f "$tmpfile"
