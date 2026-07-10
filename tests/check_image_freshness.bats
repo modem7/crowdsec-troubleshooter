@@ -32,16 +32,56 @@ setup() {
   [[ "$output" == *"Running the latest published build"* ]]
 }
 
-@test "reports WARN with a pull instruction when the built commit is behind" {
+@test "reports WARN with a pull instruction when the built commit is behind AND the diff actually touches image content" {
+  # The mock has to path-differentiate: commits/master (the SHA lookup)
+  # and compare/... (what actually changed) are two different real GitHub
+  # endpoints now that the freshness check makes both calls on a mismatch.
   start_mock_lapi 8209 "    def do_GET(self):
         self.send_response(200); self.end_headers()
-        self.wfile.write(b'{\"sha\": \"zzz9999def5678900000000000000000000000\"}')"
+        if '/compare/' in self.path:
+            self.wfile.write(b'{\"files\": [{\"filename\": \"checks/tier0_no_credential/check_lapi_alive.sh\"}]}')
+        else:
+            self.wfile.write(b'{\"sha\": \"zzz9999def5678900000000000000000000000\"}')"
   export IMAGE_GIT_SHA="abc1234000000000000000000000000000000000"
   export GITHUB_API_BASE="http://127.0.0.1:8209"
   run bash "$CHECK"
   stop_mock_lapi 8209
   [[ "$output" == *"older commit"* ]]
   [[ "$output" == *"docker pull modem7/crowdsec-troubleshooter:latest"* ]]
+}
+
+@test "reports OK (not stale) when the built commit is behind but nothing image-relevant changed" {
+  # Exactly the real bug: a wizard.sh-only change (never COPY'd into the
+  # Dockerfile, deliberately excluded from .woodpecker.yml's path filter)
+  # left master's tip ahead of the published image's build commit with no
+  # actual image content difference — the old logic warned "stale" anyway.
+  start_mock_lapi 8212 "    def do_GET(self):
+        self.send_response(200); self.end_headers()
+        if '/compare/' in self.path:
+            self.wfile.write(b'{\"files\": [{\"filename\": \"wizard.sh\"}, {\"filename\": \"tests/wizard.bats\"}]}')
+        else:
+            self.wfile.write(b'{\"sha\": \"zzz9999def5678900000000000000000000000\"}')"
+  export IMAGE_GIT_SHA="abc1234000000000000000000000000000000000"
+  export GITHUB_API_BASE="http://127.0.0.1:8212"
+  run bash "$CHECK"
+  stop_mock_lapi 8212
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing since then actually changes the image"* ]]
+  [[ "$output" != *"[WARN]"* ]]
+}
+
+@test "warns (assumes stale) rather than silently OKs when the compare API itself is unreachable" {
+  start_mock_lapi 8213 "    def do_GET(self):
+        if '/compare/' in self.path:
+            return
+        self.send_response(200); self.end_headers()
+        self.wfile.write(b'{\"sha\": \"zzz9999def5678900000000000000000000000\"}')"
+  export IMAGE_GIT_SHA="abc1234000000000000000000000000000000000"
+  export GITHUB_API_BASE="http://127.0.0.1:8213"
+  run bash "$CHECK"
+  stop_mock_lapi 8213
+  [[ "$output" == *"older commit"* ]]
+  [[ "$output" == *"Couldn't reach GitHub to check whether that actually changes the image"* ]]
 }
 
 @test "skips gracefully (not a crash) when GitHub is unreachable" {
