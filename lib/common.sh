@@ -7,12 +7,32 @@ set -uo pipefail
 # ---- output helpers ------------------------------------------------------
 # Consistent [OK]/[WARN]/[CRIT]/[INFO]/[SKIP] prefixes across every check,
 # so output is scannable regardless of which script produced a line.
+#
+# Each supports a multi-line message (embed a real newline in the string —
+# a plain multi-line double-quoted argument does this) by printing the
+# colored bracket only on the first line; further lines are indented to
+# align under the text with no repeated bracket. Call sites should pass one
+# continued explanation as one call even if it spans multiple lines — N
+# separate info() calls back to back render as N separate, unrelated-
+# looking observations instead of one continued thought.
+_leveled() {
+  local color="$1" label="$2" message="$3"
+  local first=1 line
+  while IFS= read -r line; do
+    if [[ "$first" == 1 ]]; then
+      printf "%b%s\033[0m %s\n" "$color" "$label" "$line"
+      first=0
+    else
+      printf "       %s\n" "$line"
+    fi
+  done <<< "$message"
+}
 
-ok()   { printf "\033[32m[OK]\033[0m   %s\n" "$*"; }
-warn() { printf "\033[33m[WARN]\033[0m %s\n" "$*"; }
-crit() { printf "\033[31m[CRIT]\033[0m %s\n" "$*"; }
-info() { printf "\033[36m[INFO]\033[0m %s\n" "$*"; }
-step() { printf "\033[90m[..]\033[0m   %s\n" "$*"; }
+ok()   { _leveled "\033[32m" "[OK]  " "$*"; }
+warn() { _leveled "\033[33m" "[WARN]" "$*"; }
+crit() { _leveled "\033[31m" "[CRIT]" "$*"; }
+info() { _leveled "\033[36m" "[INFO]" "$*"; }
+step() { _leveled "\033[90m" "[..]  " "$*"; }
 
 # skip <feature-name> <why-heredoc-text> <add-cmd> <remove-cmd>
 # Renders the friendly "here's what you're missing, why, and how to add/

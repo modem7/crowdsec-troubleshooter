@@ -22,11 +22,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 CROWDSEC_VERSION="${CROWDSEC_VERSION_HINT:-}"
 
 if [[ -z "$CROWDSEC_VERSION" ]]; then
-  info "No CROWDSEC_VERSION_HINT set — version/CVE checking is skipped until this is resolved properly"
-  info "See the comment at the top of this file for the two real implementation options"
+  info "No CROWDSEC_VERSION_HINT set — version/CVE checking is skipped until this is resolved properly
+See the comment at the top of this file for the two real implementation options"
   exit 0
 fi
 
 warn "Version/CVE checking against '${CROWDSEC_VERSION}' — this is a hardcoded, unmaintained CVE list"
-info "Do not treat a clean result here as a real guarantee. Check NLnetLabs/crowdsec security"
-info "advisories directly for anything current."
+info "Do not treat a clean result here as a real guarantee. Check NLnetLabs/crowdsec security
+advisories directly for anything current."
