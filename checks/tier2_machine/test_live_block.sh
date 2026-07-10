@@ -38,7 +38,7 @@ done
 if [[ "${HAS_MACHINE_CREDS:-false}" != true ]]; then
   skip "Checking whether bans actually block traffic (recommended — the biggest single proof of health)" \
     "Proving blocking really works means briefly creating a real (tiny, seconds-long) test ban and removing it again. The read-only key alone can't do that — only a 'machine' credential can. Treat it like an admin password, not like the block-checker key: it CAN create/delete real bans; it CANNOT touch Docker, your host, or anything outside CrowdSec's own ban list." \
-    "Run on your CrowdSec server: docker exec crowdsec cscli machines add troubleshooter --auto — it prints a Login/Password pair. Save them as JSON ({\"login\":\"...\",\"password\":\"...\"}), then mount that file into this container with -v and point CROWDSEC_MACHINE_CREDENTIALS_FILE at the in-container path (see setup/register_machine.sh for the full walkthrough)" \
+    "Run on your CrowdSec server: docker exec crowdsec cscli machines add troubleshooter --auto -f - — the -f - avoids colliding with /etc/crowdsec/local_api_credentials.yaml (crowdsec's own engine already uses that path) and prints a Login/Password pair instead. Save them as JSON ({\"login\":\"...\",\"password\":\"...\"}), then mount that file into this container with -v and point CROWDSEC_MACHINE_CREDENTIALS_FILE at the in-container path (see setup/register_machine.sh for the full walkthrough)" \
     "Run on your CrowdSec server: docker exec crowdsec cscli machines delete troubleshooter — then delete the credentials file and unset CROWDSEC_MACHINE_CREDENTIALS_FILE"
   exit 0
 fi

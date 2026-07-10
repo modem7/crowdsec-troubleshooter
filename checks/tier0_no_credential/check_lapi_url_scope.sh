@@ -44,13 +44,19 @@ is_private_ip() {
   return 1
 }
 
+# No longer suggests "use the internal service name instead" — that advice
+# only works if this troubleshooter container joins crowdsec's own docker
+# network (docker run --network <name>, or a --compose-detected network
+# via wizard.sh), which is neither guessed here nor true by default for
+# the wizard.sh / plain `docker run` route this check actually runs under.
+# A guessed compose-network suggestion that mostly won't resolve is worse
+# than no suggestion at all — see DESIGN.md.
 warn_not_internal() {
   warn "CROWDSEC_LAPI_URL $1 rather than a docker-compose service name"
-  info "This is consistent with reaching LAPI via a host-published port. If nothing outside this"
-  info "docker network needs to reach LAPI directly, consider dropping the port publish and using"
-  info "the internal service name instead (e.g. http://crowdsec:8080)."
-  info "Note: this can't tell whether that port is also reachable from outside your LAN — just that"
-  info "the pattern matches a published port rather than internal-only networking."
+  info "This is consistent with reaching LAPI via a host-published port rather than internal
+docker networking — expected and fine if anything outside crowdsec's own compose stack (this
+troubleshooter included) needs to reach LAPI directly. Can't tell from here whether that port
+is also reachable from outside your LAN — only that the pattern matches a published port."
 }
 
 if is_ipv4 "$host" && is_private_ip "$host"; then

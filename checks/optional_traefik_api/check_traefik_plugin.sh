@@ -35,7 +35,7 @@ if echo "$middlewares" | jq -e '.[] | select(.plugin != null) | .provider // "" 
   ok "Modern Traefik plugin bouncer detected — this is the current recommended approach"
   exit 0
 else
-  info "No crowdsec plugin middleware found registered in Traefik"
-  info "Combined with no legacy bouncer fingerprint either, this suggests no Traefik-level bouncer is active"
+  info "No crowdsec plugin middleware found registered in Traefik
+Combined with no legacy bouncer fingerprint either, this suggests no Traefik-level bouncer is active"
   exit 0
 fi

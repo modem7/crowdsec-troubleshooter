@@ -84,6 +84,19 @@ strength (API key type) and file-mount access — not capabilities.
   credentials file into the container in the first place — the token/login
   mismatch was found while checking that report, not by reading the code
   cold.
+- **`cscli machines add --auto` collides with crowdsec's own credentials
+  file.** Fixing the `.token` issue above got the *shape* of the command
+  right (login+password, not a token) but not the full picture: `cscli
+  machines add <name> --auto` writes to `/etc/crowdsec/
+  local_api_credentials.yaml` by default, and that file already exists on
+  a running instance (crowdsec's own engine already uses it) — so the
+  documented command failed with a real "credentials file already exists"
+  error the moment a user actually tried it. The fix (`-f -`, print
+  credentials to stdout instead of writing any file) was quoted directly
+  from cscli's own error message, not guessed — the error text itself
+  names `-f -` as the documented escape hatch. Caught by the user actually
+  running the command against their live CrowdSec instance, not by
+  reasoning about what `cscli` might do.
 
 ## Why no daemon mode
 

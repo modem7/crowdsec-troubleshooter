@@ -29,10 +29,10 @@ protected_challenged=false
 
 if [[ "$protected_challenged" == true && "$direct_status" == "200" ]]; then
   crit "Backend at ${TRAEFIK_DIRECT_URL} serves content directly with no auth of its own"
-  info "The protected route (${TRAEFIK_PROTECTED_URL}) correctly challenges (HTTP ${protected_status}),"
-  info "but reaching the backend directly bypasses that entirely — auth is enforced only at the"
-  info "router/middleware layer, not the backend. Anything that can reach ${TRAEFIK_DIRECT_URL} directly"
-  info "(a published port, a compromised sibling container) walks straight past the protection."
+  info "The protected route (${TRAEFIK_PROTECTED_URL}) correctly challenges (HTTP ${protected_status}),
+but reaching the backend directly bypasses that entirely — auth is enforced only at the
+router/middleware layer, not the backend. Anything that can reach ${TRAEFIK_DIRECT_URL} directly
+(a published port, a compromised sibling container) walks straight past the protection."
   exit 1
 elif [[ "$direct_status" != "200" ]]; then
   ok "Direct address (${TRAEFIK_DIRECT_URL}) did not serve content unauthenticated (HTTP ${direct_status})"

@@ -27,8 +27,8 @@ dupes="$(cat "$ACQUIS_PATH" "$ACQUIS_DIR"/*.yaml 2>/dev/null | grep -E '^\s*-\s*
 if [[ -n "$dupes" ]]; then
   warn "Duplicate acquisition file paths found — each of these log files is being read more than once:"
   echo "$dupes" | sed 's/^/     /'
-  info "Consequence: scenarios watching these logs may trigger on fewer real events than their"
-  info "threshold implies, since each line is double-counted."
+  info "Consequence: scenarios watching these logs may trigger on fewer real events than their
+threshold implies, since each line is double-counted."
 else
   ok "No duplicate acquisition entries found"
 fi
