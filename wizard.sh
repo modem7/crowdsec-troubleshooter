@@ -433,11 +433,24 @@ parse_compose() {
 
     local api_port=""
     if [[ -n "$dash_router" ]]; then
-      local entrypoints_label first_ep rule host_expr scheme resolved_host env_file
+      local entrypoints_label first_ep rule host_expr scheme resolved_host env_file dash_middlewares
       entrypoints_label="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.entrypoints")"
       first_ep="${entrypoints_label%%,*}"
       if [[ -n "$first_ep" ]]; then
         api_port="$(echo "$cmds" | grep -iE "^--entrypoints\\.${first_ep}\\.address=" | sed -E 's/.*:([0-9]+).*/\1/' | head -1 || true)"
+      fi
+
+      # A real-world case, not hypothetical: a dashboard router bound only
+      # to the public HTTPS entrypoints with an auth middleware attached
+      # (SSO in front of the dashboard — a legitimate, common hardening
+      # pattern) means check_bouncer_type.sh's API-based confirmation
+      # can't work through it at all: an unauthenticated request gets
+      # challenged before ever reaching api@internal. No URL substitution
+      # fixes that — it's a real limitation of that check for this setup,
+      # not a wrong guess. Say so rather than suggest a URL fated to fail.
+      dash_middlewares="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.middlewares")"
+      if [[ -n "$dash_middlewares" ]]; then
+        warn "Dashboard router '${dash_router}' has middlewares=${dash_middlewares} attached (auth/SSO?) — check_bouncer_type.sh's Traefik-API confirmation needs UNauthenticated access, so it likely can't succeed through this router regardless of which URL is used. Only relevant if you rely on that specific check; everything else in this tool is unaffected."
       fi
 
       rule="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.rule")"
