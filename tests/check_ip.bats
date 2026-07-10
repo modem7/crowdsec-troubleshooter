@@ -43,6 +43,37 @@ setup() {
   [[ "$output" == *"read-only bouncer"* ]]
 }
 
+@test "reports every decision when an IP has more than one active ban" {
+  start_mock_lapi 8214 "    def do_GET(self):
+        self.send_response(200); self.end_headers()
+        self.wfile.write(b'[{\"scenario\": \"crowdsecurity/ssh-bf\", \"origin\": \"crowdsec\", \"duration\": \"4h\"}, {\"scenario\": \"crowdsecurity/http-dos\", \"origin\": \"CAPI\", \"duration\": \"1h\"}]')"
+  export HAS_BOUNCER_KEY=true
+  export CROWDSEC_LAPI_URL="http://127.0.0.1:8214"
+  export CROWDSEC_LAPI_KEY="test-key"
+  run bash "$CHECK" 198.51.100.23
+  stop_mock_lapi 8214
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"repeated failed SSH logins"* ]]
+  [[ "$output" == *"excessive request rate (possible DoS)"* ]]
+  [[ "$output" == *"community blocklist (shared threat intelligence)"* ]]
+  # exactly two, not one merged/duplicated/missing
+  [ "$(grep -c 'This IP is currently banned' <<<"$output")" -eq 2 ]
+}
+
+@test "falls back to 'unknown' for a decision missing scenario/origin/duration fields" {
+  start_mock_lapi 8215 "    def do_GET(self):
+        self.send_response(200); self.end_headers()
+        self.wfile.write(b'[{}]')"
+  export HAS_BOUNCER_KEY=true
+  export CROWDSEC_LAPI_URL="http://127.0.0.1:8215"
+  export CROWDSEC_LAPI_KEY="test-key"
+  run bash "$CHECK" 198.51.100.23
+  stop_mock_lapi 8215
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Reason: unknown"* ]]
+  [[ "$output" == *"Duration: unknown"* ]]
+}
+
 @test "fails clearly when LAPI is unreachable" {
   export HAS_BOUNCER_KEY=true
   export CROWDSEC_LAPI_URL="http://127.0.0.1:1"

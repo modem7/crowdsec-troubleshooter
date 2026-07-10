@@ -22,7 +22,7 @@ set -uo pipefail
 # shellcheck source=../../lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
-host="$(echo "$CROWDSEC_LAPI_URL" | sed -E 's#^https?://##; s#[:/].*##')"
+host="$(sed -E 's#^https?://##; s#[:/].*##' <<<"$CROWDSEC_LAPI_URL")"
 
 is_ipv4() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 
