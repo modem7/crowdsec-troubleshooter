@@ -10,15 +10,11 @@
 # the script is killed, the target is unreachable, or anything else goes
 # wrong partway through — this must never leave a stray ban behind.
 #
-# Credentials file holds login+password, NOT a ready bearer token. An
-# earlier version read a `.token` field directly out of the credentials
-# file, but `cscli machines add --auto` only ever prints a login/password
-# pair — there's no ready-made token to save. A machine authenticates by
-# POSTing that login+password to /v1/watchers/login, which returns a
-# short-lived JWT. Doing that exchange once at setup time and saving the
-# resulting token would work for a few hours and then silently start
-# failing, so instead we mint a fresh token on every run, same as a real
-# CrowdSec agent does.
+# Credentials file holds login+password, NOT a bearer token — `cscli
+# machines add --auto` only ever prints a login/password pair. A machine
+# authenticates by POSTing that to /v1/watchers/login, which returns a
+# short-lived JWT; minted fresh on every run rather than saved once, since a
+# saved token would silently expire within hours.
 
 set -uo pipefail
 # shellcheck source=../../lib/common.sh
@@ -80,28 +76,18 @@ cleanup() {
       warn "Cleanup request failed — verify manually: cscli decisions list -i ${TEST_IP}"
   fi
 }
+# SIGTERM/SIGINT named explicitly, not just EXIT: this script runs as PID 1
+# in the container, and Linux silently ignores unhandled signals sent to
+# PID 1 — without this, `docker stop` could be ignored until SIGKILL forces
+# it, skipping cleanup of the test ban entirely (see DESIGN.md).
 trap cleanup EXIT SIGTERM SIGINT
-# Explicit, not just EXIT: this script runs as PID 1 inside the container.
-# Linux gives PID 1 special treatment — any signal without an explicitly
-# installed handler is silently ignored by the kernel (so an init process
-# can't die by accident). A bare `trap cleanup EXIT` may not count as an
-# explicit SIGTERM handler in that context, meaning `docker stop` could be
-# ignored until the grace period expires and SIGKILL forces it — skipping
-# this cleanup entirely, and SIGKILL can't be trapped by anything. Naming
-# SIGTERM/SIGINT explicitly here is the actual fix; it costs nothing and
-# needs no init-system dependency (tini/dumb-init/s6) to get right.
 
 step "Adding test decision banning ${TEST_IP} for 60s..."
-# There is no POST /v1/decisions — that endpoint is GET (list)/DELETE
-# (remove) only. A confirmed-working live test against a real LAPI instance
-# hit this: `cscli decisions add` doesn't call any such endpoint either —
-# it builds a full synthetic Alert with the decision embedded and POSTs
-# that to /v1/alerts (see pkg/apiclient/alerts_service.go and
-# cmd/crowdsec-cli/clidecision/decisions.go in crowdsecurity/crowdsec).
-# Field shape below (capacity/leakspeed/events/etc., decision.scenario
-# instead of a "reason" key) is copied from that Go struct, not guessed —
-# see DESIGN.md for the earlier lesson about assuming an endpoint exists
-# without checking against the real API first.
+# There is no POST /v1/decisions (GET/DELETE only) — adding a decision means
+# POSTing a full synthetic Alert with the decision embedded to /v1/alerts,
+# same as `cscli decisions add` does internally (see
+# cmd/crowdsec-cli/clidecision/decisions.go in crowdsecurity/crowdsec). The
+# field shape below is copied from that Go struct, not guessed.
 ALERT_REASON="crowdsec-troubleshooter live test"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 alert_payload=$(cat <<EOF
@@ -113,10 +99,8 @@ alert_payload=$(cat <<EOF
 EOF
 )
 
-# No -f here on purpose: a failed request needs its body to be diagnosable.
-# -f discards the response body on any 4xx/5xx, which is exactly what
-# turned the original bug into a bare "check your credentials" guess
-# instead of an actual LAPI error message.
+# No -f here: it would discard the response body on 4xx/5xx, and a failed
+# request needs that body to be diagnosable.
 add_raw="$(curl -sS -w '\n%{http_code}' -X POST --max-time 10 \
   -H "Authorization: Bearer ${MACHINE_TOKEN}" -H "Content-Type: application/json" \
   -d "$alert_payload" \

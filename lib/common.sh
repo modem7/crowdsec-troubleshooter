@@ -4,17 +4,12 @@
 
 set -uo pipefail
 
-# ---- output helpers ------------------------------------------------------
-# Consistent [OK]/[WARN]/[CRIT]/[INFO]/[SKIP] prefixes across every check,
-# so output is scannable regardless of which script produced a line.
-#
-# Each supports a multi-line message (embed a real newline in the string —
-# a plain multi-line double-quoted argument does this) by printing the
-# colored bracket only on the first line; further lines are indented to
-# align under the text with no repeated bracket. Call sites should pass one
-# continued explanation as one call even if it spans multiple lines — N
-# separate info() calls back to back render as N separate, unrelated-
-# looking observations instead of one continued thought.
+# ---- output helpers -------------------------------------------------------
+# Consistent [OK]/[WARN]/[CRIT]/[INFO]/[SKIP] prefixes across every check.
+# A multi-line message (a literal newline embedded in the string) prints the
+# colored bracket once, with continuation lines indented under it — pass one
+# continued explanation as a single call rather than several back-to-back
+# ones, which would render as unrelated observations instead.
 _leveled() {
   local color="$1" label="$2" message="$3"
   local first=1 line
@@ -58,11 +53,8 @@ http_get() {
 }
 
 # http_status <url> [header...] -> prints just the HTTP status code, "000" on failure
-# NOTE: curl's -w already prints "000" on connection failure even though it
-# also exits non-zero — an earlier version of this appended `|| echo "000"`
-# on top of that, producing a concatenated "000000". Fixed by capturing
-# curl's own output and only falling back via parameter expansion if it's
-# truly empty (which happens essentially never, but is the correct guard).
+# Reads curl's own "000" via -w rather than appending `|| echo "000"`, which
+# would double up to "000000" since curl already exits non-zero on failure.
 http_status() {
   local url="$1"; shift
   local -a hdrs=()

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # add_readonly_bouncer.sh
 #
-# This prints instructions rather than executing anything — bouncer
-# registration is a database operation (`cscli bouncers add`), not an LAPI
-# HTTP endpoint, so it genuinely cannot be done by this container over the
-# network. That's a deliberate CrowdSec design choice: if any container
-# could self-issue a read key over the network, anyone on the LAN could
-# enumerate the whole ban list. The one manual step below is unavoidable.
+# Prints instructions rather than executing anything — bouncer registration
+# (`cscli bouncers add`) is a database operation, not an LAPI HTTP endpoint,
+# so it can't be done by this container over the network. The one manual
+# step below is unavoidable by design.
 
 set -uo pipefail
 # shellcheck source=../lib/common.sh

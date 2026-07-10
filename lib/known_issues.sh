@@ -1,25 +1,17 @@
 #!/usr/bin/env bash
 # lib/known_issues.sh — curated knowledge base of common CrowdSec /
-# CrowdSec+Traefik problems, kept as data rather than scattered across
-# check scripts.
+# CrowdSec+Traefik problems, kept as data rather than scattered across check
+# scripts, since most of these (upstream version bugs, nftables internals)
+# have no reliable credential-free detection — they're reference material
+# for a human, not something a check can assert pass/fail on.
 #
-# Why a separate file instead of growing the checks themselves: most of
-# these are things this tool has no reliable, credential-free way to
-# actually detect (upstream version bugs, "which exact release broke this",
-# nftables internals) — they're reference material for a human reading the
-# output, not something a check script can assert pass/fail on. Baking that
-# many string literals into check scripts would bloat them for no gain.
-# Sourced lazily (only by the `issues` action in troubleshoot.sh, not on
-# every wellness-check run) and shipped inside the Docker image via the
-# existing `COPY --link lib/` in the Dockerfile, so it's available offline
-# in airgapped environments too — no network call needed to browse it.
+# Sourced lazily (only by the `issues` action, not every wellness run) and
+# shipped inside the image, so it's browsable offline/airgapped too.
 #
-# NOT a live feed. Curated by hand from crowdsecurity/crowdsec,
+# NOT a live feed — hand-curated from crowdsecurity/crowdsec,
 # crowdsecurity/cs-firewall-bouncer, and
-# maxlerebourg/crowdsec-bouncer-traefik-plugin GitHub issues, filtered to
-# problems this tool doesn't already have a dedicated check for. Update
-# KB_VERSION below whenever entries are added/changed so `docker pull`ing a
-# newer image is the only thing needed to refresh it.
+# maxlerebourg/crowdsec-bouncer-traefik-plugin issues. Bump KB_VERSION
+# whenever entries change.
 
 set -uo pipefail
 # shellcheck source=./common.sh
@@ -27,11 +19,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 KB_VERSION="2026-07-10"
 
-# -g matters: without it, `declare -A` inside a function scope (e.g. a
-# bats `setup()` sourcing this file, or any future caller that isn't
-# top-level troubleshoot.sh) makes KB_ISSUES local and it vanishes the
-# moment that function returns — caught by known_issues.bats sourcing this
-# from setup() and every lookup afterward silently misbehaving.
+# -g matters: without it, `declare -A` inside a function scope (e.g. a bats
+# `setup()` sourcing this file) makes KB_ISSUES local, vanishing once that
+# function returns.
 #
 # id -> "Title|Component|Symptom|Fix|Link"
 # Field separator is a plain pipe — none of the text below contains one.
