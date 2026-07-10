@@ -92,13 +92,41 @@ trap cleanup EXIT SIGTERM SIGINT
 # needs no init-system dependency (tini/dumb-init/s6) to get right.
 
 step "Adding test decision banning ${TEST_IP} for 60s..."
-add_response="$(curl -fsS -X POST --max-time 10 \
-  -H "Authorization: Bearer ${MACHINE_TOKEN}" -H "Content-Type: application/json" \
-  -d "{\"decisions\":[{\"duration\":\"60s\",\"scope\":\"Ip\",\"value\":\"${TEST_IP}\",\"type\":\"ban\",\"reason\":\"crowdsec-troubleshooter live test\"}]}" \
-  "${CROWDSEC_LAPI_URL}/v1/decisions" 2>/dev/null)"
+# There is no POST /v1/decisions — that endpoint is GET (list)/DELETE
+# (remove) only. A confirmed-working live test against a real LAPI instance
+# hit this: `cscli decisions add` doesn't call any such endpoint either —
+# it builds a full synthetic Alert with the decision embedded and POSTs
+# that to /v1/alerts (see pkg/apiclient/alerts_service.go and
+# cmd/crowdsec-cli/clidecision/decisions.go in crowdsecurity/crowdsec).
+# Field shape below (capacity/leakspeed/events/etc., decision.scenario
+# instead of a "reason" key) is copied from that Go struct, not guessed —
+# see DESIGN.md for the earlier lesson about assuming an endpoint exists
+# without checking against the real API first.
+ALERT_REASON="crowdsec-troubleshooter live test"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+alert_payload=$(cat <<EOF
+[{"capacity":0,"leakspeed":"0","message":"${ALERT_REASON}","events":[],"events_count":1,
+"scenario":"${ALERT_REASON}","scenario_hash":"","scenario_version":"","simulated":false,
+"start_at":"${NOW}","stop_at":"${NOW}","remediation":true,"kind":"cscli",
+"source":{"ip":"${TEST_IP}","scope":"Ip","value":"${TEST_IP}"},
+"decisions":[{"duration":"60s","scope":"Ip","value":"${TEST_IP}","type":"ban","scenario":"${ALERT_REASON}","origin":"cscli"}]}]
+EOF
+)
 
-if [[ -z "$add_response" ]]; then
-  crit "Failed to add test decision — check CROWDSEC_MACHINE_CREDENTIALS_FILE is still valid"
+# No -f here on purpose: a failed request needs its body to be diagnosable.
+# -f discards the response body on any 4xx/5xx, which is exactly what
+# turned the original bug into a bare "check your credentials" guess
+# instead of an actual LAPI error message.
+add_raw="$(curl -sS -w '\n%{http_code}' -X POST --max-time 10 \
+  -H "Authorization: Bearer ${MACHINE_TOKEN}" -H "Content-Type: application/json" \
+  -d "$alert_payload" \
+  "${CROWDSEC_LAPI_URL}/v1/alerts" 2>/dev/null)"
+add_http_code="${add_raw##*$'\n'}"
+add_body="${add_raw%$'\n'*}"
+
+if [[ "$add_http_code" != "201" ]]; then
+  crit "Failed to add test decision — LAPI returned HTTP ${add_http_code}"
+  info "Response: ${add_body:-<empty — LAPI unreachable or connection dropped>}"
   exit 1
 fi
 DECISION_ADDED=true
