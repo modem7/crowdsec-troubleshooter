@@ -18,9 +18,9 @@ reference for the manual `docker run` route, and for wizard.sh's own flags.
 | `CROWDSEC_LAPI_URL` | 0 | Everything — the one thing this tool actually requires | — |
 | `CROWDSEC_METRICS_URL` | 0 | Accurate log-parsing-activity check when metrics isn't on the same port as LAPI | — |
 | `METRICS_POLL_GAP` | 0 | Tuning only — seconds between the two metrics samples (default `10`) | — |
-| `TRAEFIK_BOUNCER_URL` | 0 (optional) | Bouncer-type fingerprinting | — |
+| `TRAEFIK_BOUNCER_URL` | 0 (optional) | Bouncer-type fingerprinting — legacy ForwardAuth-style bouncer | — |
+| `TRAEFIK_API_URL` | 0 (optional) | Bouncer-type fingerprinting — modern Traefik plugin bouncer | Traefik must have `--api.dashboard=true` |
 | `TRAEFIK_PROTECTED_URL` + `TRAEFIK_DIRECT_URL` | 0 (optional) | Auth-bypass comparison check | Both must be set together |
-| `TRAEFIK_API_URL` | optional | Positive confirmation of the modern Traefik plugin bouncer | Traefik must have `--api.dashboard=true` |
 | `CROWDSEC_LAPI_KEY` | 1 | `check-ip` — the block checker | A dedicated **read-only** bouncer key |
 | `CROWDSEC_MACHINE_CREDENTIALS_FILE` | 2 | `live-test` — proves blocking works end-to-end | A `-v` mount (see below) + a machine credential |
 | `CROWDSEC_VERSION_HINT` | optional | CVE checking against a hardcoded, unmaintained list — see caveat below | — |
@@ -52,7 +52,16 @@ docker run --rm -e CROWDSEC_LAPI_URL=http://crowdsec:8080 modem7/crowdsec-troubl
 - **`TRAEFIK_BOUNCER_URL`** *(optional)* — your Traefik bouncer's own
   service address, e.g. `http://traefik-bouncer:8080`. Fingerprints the
   legacy ForwardAuth-style bouncer directly; a non-match doesn't prove the
-  modern plugin bouncer is running instead (see `TRAEFIK_API_URL` below).
+  modern plugin bouncer is running instead — set `TRAEFIK_API_URL` too if
+  you want that checked.
+- **`TRAEFIK_API_URL`** *(optional)* — Traefik's own internal API address,
+  e.g. `http://traefik:8080` (requires `--api.dashboard=true` on Traefik).
+  Confirms the modern **plugin** bouncer, which runs in-process inside
+  Traefik with no separate service to ping — this is CrowdSec's current
+  recommended approach, and the only way to positively confirm it rather
+  than just failing to find the legacy one. Set either or both of
+  `TRAEFIK_BOUNCER_URL`/`TRAEFIK_API_URL` — `check_bouncer_type.sh` checks
+  whichever you've configured and reports a combined result.
 - **`TRAEFIK_PROTECTED_URL`** + **`TRAEFIK_DIRECT_URL`** *(optional pair)* —
   the normal auth-gated URL for a service, and its raw internal address.
   Set both to check whether the backend enforces its own auth or relies
