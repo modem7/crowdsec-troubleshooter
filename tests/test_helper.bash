@@ -23,10 +23,22 @@ import time
 while True: time.sleep(1)
 " &
   MOCK_PIDS+=("$!")
-  # wait for the port to actually be listening rather than a fixed sleep
+  # wait for the port to actually be listening rather than a fixed sleep.
+  # fd 9, not 3: bats reserves fd 3 as its own TAP-output channel in the
+  # test process. The raw-connect probe below opened fd 3 inside a
+  # subshell (correctly scoped — closes automatically on subshell exit)
+  # but then also ran `exec 3>&-` *outside* it, unconditionally, which
+  # doesn't touch the subshell's fd at all — it closes the outer shell's
+  # real fd 3, i.e. bats' own reporting channel, causing a "Bad file
+  # descriptor" failure the next time bats tried to report this test's
+  # result. Only reproduced when the primary curl check missed on its
+  # first pass (server not listening yet) and fell through to this probe —
+  # caught by a new test in test_live_block.bats hitting that timing
+  # window, not by reading the code. Fixed by using a non-reserved fd and
+  # dropping the redundant, harmful outer close.
   for _ in $(seq 1 20); do
     if curl -s -o /dev/null "http://127.0.0.1:${port}/" 2>/dev/null; then break; fi
-    if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then exec 3>&-; break; fi
+    if (exec 9<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then break; fi
     sleep 0.1
   done
 }
