@@ -100,6 +100,22 @@ criteria. `lib/known_issues.sh`'s own `KB_VERSION` line is the source of
 truth for when this was last refreshed; update the count here whenever
 entries are added or removed.
 
+### Ready-to-use configs
+
+[`examples/`](./examples/) has copy-pasteable starting points instead of
+building a `docker run` invocation by hand:
+
+- [`docker-compose.troubleshooter-addon.yml`](./examples/docker-compose.troubleshooter-addon.yml) —
+  add as a service to whichever compose stack you're already running;
+  every optional `-e`/`-v` is present but commented out.
+- [`docker-compose.scenario-a-traefik-plugin.yml`](./examples/docker-compose.scenario-a-traefik-plugin.yml) —
+  a full CrowdSec + Traefik plugin bouncer stack, including a securely
+  exposed (internal-network-only) Traefik API so `check_bouncer_type.sh`
+  can actually confirm the plugin bouncer is registered.
+- [`docker-run.bare-metal-crowdsec.sh`](./examples/docker-run.bare-metal-crowdsec.sh) —
+  the bare-metal/non-Docker-CrowdSec case above, as a runnable script with
+  the real host paths already wired up.
+
 ### Or skip the `-e` flags entirely: `wizard.sh`
 
 Typing out `CROWDSEC_LAPI_URL`/`CROWDSEC_LAPI_KEY`/`CROWDSEC_MACHINE_CREDENTIALS_FILE`
@@ -189,7 +205,9 @@ and the firewall bouncer's own packaged config, not assumed:
 Both `/etc/crowdsec/...` and `/var/log/...` above assume CrowdSec's default
 `log_dir`/config locations from a standard apt/binary install — if you've
 customized `common.log_dir` in your own `config.yaml`, use that path
-instead.
+instead. A ready-to-run reference invocation with all of the above wired
+up is in
+[`examples/docker-run.bare-metal-crowdsec.sh`](./examples/docker-run.bare-metal-crowdsec.sh).
 
 ### Running both a bare-metal and a Dockerized instance side by side
 
