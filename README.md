@@ -40,9 +40,40 @@ docker run --rm -e CROWDSEC_LAPI_URL=... -e CROWDSEC_LAPI_KEY=... \
   modem7/crowdsec-troubleshooter check-ip 198.51.100.23
 
 # Prove blocking actually works end-to-end (adds/removes a real test ban)
-docker run --rm -e CROWDSEC_LAPI_URL=... -e CROWDSEC_MACHINE_CREDENTIALS_FILE=... \
+# CROWDSEC_MACHINE_CREDENTIALS_FILE is read from inside the container, so the
+# host file must be bind-mounted in — see setup/register_machine.sh for how
+# to provision the credential itself (it's a login+password, not a token).
+docker run --rm -e CROWDSEC_LAPI_URL=... \
+  -e CROWDSEC_MACHINE_CREDENTIALS_FILE=/creds/machine.json \
+  -v /path/on/host/machine.json:/creds/machine.json:ro \
   modem7/crowdsec-troubleshooter live-test --target-url https://your-service.example.com
 ```
+
+### Or skip the `-e` flags entirely: `wizard.sh`
+
+Typing out `CROWDSEC_LAPI_URL`/`CROWDSEC_LAPI_KEY`/`CROWDSEC_MACHINE_CREDENTIALS_FILE`
+by hand every run gets old fast, especially with the `-v` mount the last
+one needs. `wizard.sh` (Linux only — clone the repo, it runs on the host,
+not inside the container) prompts for whatever a given action actually
+needs, remembers what you enter in `./.crowdsec-troubleshooter.env` for
+next time, and launches the real `docker run` for you:
+
+```bash
+./wizard.sh                                        # interactive menu
+./wizard.sh --compose ./docker-compose.yml wellness # auto-suggest from your compose file
+./wizard.sh check-ip 198.51.100.23
+./wizard.sh live-test https://your-service.example.com
+```
+
+Every value it resolves follows the same priority: a shell env var you've
+already exported wins, then a previously-saved value, then a
+`docker-compose.yml`-derived suggestion (best-effort — it looks for
+`crowdsecurity/crowdsec`, `*traefik-crowdsec-bouncer`, and
+`crowdsecurity/cloudflare-worker-bouncer` images and reads their `ports:`/
+`networks:`/`environment:` blocks), then blank. Nothing is silently
+overwritten — every prompt shows its default and Enter keeps it. The saved
+file is `chmod 600`'d; treat it like any other credentials file and
+`.gitignore` it if this directory is a git repo.
 
 ## The tier model
 
