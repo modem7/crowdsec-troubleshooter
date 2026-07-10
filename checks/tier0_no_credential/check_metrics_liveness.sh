@@ -21,10 +21,9 @@ sum_hit_counters() {
     | awk '{sum += $NF} END {print sum+0}'
 }
 
-# NOTE: awk's `END {print sum+0}` always prints "0" even on completely empty
-# input, so checking `[[ -z "$first" ]]` after piping straight through awk
-# can never detect an unreachable endpoint — awk always produces output.
-# Fixed by checking the raw curl response for emptiness BEFORE summarizing.
+# Check the raw response for emptiness before summarizing — awk's
+# `END {print sum+0}` always prints "0" even on empty input, so testing the
+# summarized value can never detect an unreachable endpoint.
 raw_first="$(http_get "${METRICS_URL}/metrics" 2>/dev/null)"
 
 if [[ -z "$raw_first" ]]; then

@@ -12,12 +12,9 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")" || { echo "Failed to cd into script directory — this shouldn't happen inside the container"; exit 1; }
 source lib/common.sh
 
-# `issues` is pure offline reference data — no LAPI, no credential, nothing
-# network-shaped at all. Handled before capability_check.sh on purpose: that
-# script hard-fails without CROWDSEC_LAPI_URL ("nothing in this tool is
-# meaningful without it"), which used to be true but stops being true for a
-# KB lookup — the whole point is that it also works airgapped, with zero
-# env vars set.
+# `issues` is pure offline reference data (no LAPI, no credential needed), so
+# it's handled before capability_check.sh sources — that script hard-fails
+# without CROWDSEC_LAPI_URL, which would otherwise block this working airgapped.
 if [[ "${1:-}" == "issues" ]]; then
   source lib/known_issues.sh
   case "${2:-}" in
@@ -59,21 +56,15 @@ case "${1:-}" in
 esac
 
 # run_checks_grouped <dir-or-single-check.sh> — runs every check script in
-# <dir> (or just the one script, if given a file instead of a directory —
-# used by run_tier1() for check_ban_stats.sh, the one tier1 check that
-# needs no argument and so can join an automatic sweep, unlike check-ip),
-# printing actual results (OK/WARN/CRIT/INFO) as they complete, but holding
-# back the 🔒 "not configured" reminders to print together under one header
-# at the end instead of interleaved with real results. The two were
-# previously indistinguishable at a glance in the same flat stream — this
-# keeps them structurally separate without changing what any individual
-# check does.
+# <dir> (or just the one script, if given a file — used by run_tier1() for
+# check_ban_stats.sh, the one tier1 check needing no argument). Prints real
+# results (OK/WARN/CRIT/INFO) as they complete, but holds back the 🔒
+# "not configured" blocks to print together under one footer instead of
+# interleaved with real results.
 #
-# Trade-off: each check's output has to be fully captured before it can be
-# classified, so a check with an internal wait (check_metrics_liveness.sh's
-# 10s poll gap) no longer streams its own progress line in real time — it
-# appears all at once when the check finishes. Worth it for the readability
-# win; nothing else in this tool has a comparable internal delay.
+# Each check's output is captured in full before it's classified, so a check
+# with an internal wait (check_metrics_liveness.sh's poll gap) won't stream
+# progress in real time — acceptable since nothing else here has a comparable delay.
 run_checks_grouped() {
   local target="$1"
   local -a checks=()
@@ -85,11 +76,10 @@ run_checks_grouped() {
   local locked="" out status overall_status=0
   for check in "${checks[@]}"; do
     out="$(bash "$check")"
+    # Capture $? immediately — the command substitution above already
+    # consumed it once, so grabbing it late would silently lose a check's
+    # real exit code.
     status=$?
-    # Capturing output via command substitution above already overwrote $?
-    # once for the `[[ ]]` test below — grab it into `status` immediately,
-    # before anything else touches $?, or a check's real exit code silently
-    # vanishes and the whole tier reports success regardless of what ran.
     (( status != 0 )) && overall_status=$status
     if [[ "$out" == *"🔒"* ]]; then
       locked+="${out}"$'\n'
@@ -132,17 +122,11 @@ case "$ACTION" in
   tier-run)
     echo "Wellness Check Results"
     echo "────────────────────────"
-    # Explicitly aggregated exit status, not "whatever the last statement's
-    # own status happened to be". Two failure modes ruled out here:
-    # `(( REQUESTED_TIER >= N )) && run_tierN` leaks the *arithmetic test's*
-    # exit status (1) whenever the tier isn't requested — and since that's
-    # the last thing run on every default (tier0-only) invocation, the
-    # container exited 1 on every wellness check regardless of whether any
-    # check failed. Swapping to bare `if`/`fi` avoids that, but introduces
-    # the opposite bug: a skipped tier's vacuously-true `if` (exit 0) would
-    # silently overwrite run_tier0's real, possibly-nonzero result. Tracking
-    # `tier_status` explicitly and only updating it when a stage actually
-    # ran avoids both.
+    # tier_status is tracked explicitly rather than relying on the last
+    # statement's exit status: `(( cond )) && run_tierN` alone would leak the
+    # arithmetic test's own exit code (1) whenever a tier is skipped, and a
+    # bare `if`/`fi` would let a vacuously-true skip silently overwrite an
+    # earlier tier's real failure.
     tier_status=0
     run_tier0; (( $? != 0 )) && tier_status=1
     if (( REQUESTED_TIER >= 1 )); then run_tier1; (( $? != 0 )) && tier_status=1; fi

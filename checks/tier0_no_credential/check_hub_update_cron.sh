@@ -1,22 +1,15 @@
 #!/usr/bin/env bash
 # check_hub_update_cron.sh — Tier 0, no credential needed. Mount optional.
 #
-# CrowdSec's actual detection rules (scenarios/collections) go stale
-# without `cscli hub update && cscli hub upgrade` run periodically —
-# nothing else refreshes them automatically, and an out-of-date hub is a
-# silent failure mode: CrowdSec keeps running, LAPI stays healthy, but it's
-# defending against last year's attack patterns. This is universally
-# relevant advice (unlike, say, the Traefik checks, which only apply if
-# Traefik is even in the stack), so it always prints — not gated behind
-# the 🔒 skip() pattern the way genuinely optional/credential-gated checks
-# are, since that would bury it in the "Optional checks" footer alongside
-# things that only apply to some setups.
+# CrowdSec's detection rules (scenarios/collections) go stale without
+# `cscli hub update && cscli hub upgrade` run periodically — a silent
+# failure mode, since LAPI stays healthy while defending against outdated
+# attack patterns. Unlike the Traefik checks, this applies to every
+# installation, so it always prints a plain info line rather than being
+# gated behind skip()'s "Optional checks" footer.
 #
 # If a host crontab is optionally mounted read-only, this upgrades from a
-# blanket recommendation to an actual confirmed/missing finding. Mirrors
-# check_acquisition_dupes.sh's dual single-file/directory mount support,
-# since a crontab could be a `crontab -l` export (one file) or a
-# system-wide /etc/cron.d/ directory (many files).
+# blanket recommendation to an actual confirmed/missing finding.
 
 set -uo pipefail
 # shellcheck source=../../lib/common.sh

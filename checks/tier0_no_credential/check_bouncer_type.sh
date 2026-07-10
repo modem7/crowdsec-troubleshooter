@@ -5,27 +5,17 @@
 #
 # - Legacy ForwardAuth-style bouncer (fbonalair/freifunkmuc forks) — a
 #   separate service with its own /api/v1/ping endpoint, fingerprinted
-#   directly, NOT via LAPI. This never touches LAPI's bouncer registry at
-#   all: cscli's bouncer list/add/delete commands hit CrowdSec's database
+#   directly. cscli's bouncer list/add/delete hit CrowdSec's database
 #   directly, not an HTTP endpoint, so that data isn't reachable over the
-#   network regardless of credential tier. This works around that by
-#   asking the bouncer itself instead.
+#   network at any credential tier — asking the bouncer itself works around that.
 # - Modern Traefik plugin bouncer — runs in-process inside Traefik with no
-#   separate service to probe at all, so confirming it means asking
-#   Traefik's own API (api@internal) for a registered middleware whose
-#   plugin module references crowdsec-bouncer-traefik-plugin instead.
+#   separate service to probe, so confirming it means asking Traefik's own
+#   API (api@internal) for a registered middleware whose plugin module
+#   references crowdsec-bouncer-traefik-plugin instead.
 #
-# These used to be two entirely separate checks (this file, plus
-# checks/optional_traefik_api/check_traefik_plugin.sh) on the theory that
-# querying Traefik's own API is a genuinely different integration surface
-# from anything CrowdSec-specific. True, but that separation had a real
-# cost: checks/optional_traefik_api/ was never actually wired into
-# troubleshoot.sh's tier0 sweep, so the plugin-bouncer check silently never
-# ran for anyone — TRAEFIK_API_URL was collected by wizard.sh and exported
-# into the container, but nothing ever consumed it. Merged into one check
-# so both bouncer types get the same automatic, always-attempted coverage,
-# since the plugin bouncer is CrowdSec's current recommended approach and
-# deserves first-class detection, not a footnote nobody could reach.
+# Both fingerprints live in one check (see DESIGN.md) so the plugin bouncer —
+# CrowdSec's current recommended approach — gets the same automatic coverage
+# as the legacy one, rather than needing its own separately-wired check.
 
 set -uo pipefail
 # shellcheck source=../../lib/common.sh
