@@ -43,6 +43,6 @@ PROBE_PATH="/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl"
 step "Requesting ${TARGET_URL}${PROBE_PATH}..."
 curl -fsS --max-time 10 "${TARGET_URL}${PROBE_PATH}" >/dev/null 2>&1 || true
 
-info "This check is a stub pending verification against a live AppSec-enabled instance."
-info "See the comment at the top of this file for what needs confirming before it's trustworthy."
+info "This check is a stub pending verification against a live AppSec-enabled instance.
+See the comment at the top of this file for what needs confirming before it's trustworthy."
 exit 0

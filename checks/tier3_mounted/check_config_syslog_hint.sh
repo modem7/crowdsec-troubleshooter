@@ -23,8 +23,8 @@ fi
 
 if [[ ! -s "$LOG_PATH" ]]; then
   warn "crowdsec.log exists but is empty — if crowdsec isn't starting, this is a real gotcha:"
-  info "config.yaml-level YAML syntax errors log to syslog, not crowdsec.log. Check the host's"
-  info "syslog/journalctl output for the actual error, not this file."
+  info "config.yaml-level YAML syntax errors log to syslog, not crowdsec.log. Check the host's
+syslog/journalctl output for the actual error, not this file."
 else
   ok "crowdsec.log has content — if something's wrong, it's likely logged here rather than syslog"
 fi

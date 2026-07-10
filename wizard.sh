@@ -478,8 +478,8 @@ case "$ACTION" in
     [[ -z "$ACTION_ARG" ]] && prompt ACTION_ARG "Target URL to test blocking against" ""
     prompt host_creds_path "Path to your machine credentials JSON (blank to create one now)" "${PREV[_MACHINE_CREDS_HOST_PATH]:-}"
     if [[ -z "$host_creds_path" ]]; then
-      note "On your CrowdSec server, run: docker exec crowdsec cscli machines add troubleshooter --auto"
-      note "It prints a Login and Password — enter them below (see setup/register_machine.sh for the full explanation)."
+      note "On your CrowdSec server, run: docker exec crowdsec cscli machines add troubleshooter --auto -f -"
+      note "The -f - avoids colliding with /etc/crowdsec/local_api_credentials.yaml (crowdsec's own engine already uses that path) and prints a Login/Password pair — enter them below (see setup/register_machine.sh for the full explanation)."
       prompt m_login "Machine login" ""
       prompt_secret m_password "Machine password" ""
       prompt host_creds_path "Save the credentials JSON to" "./.crowdsec-machine.json"

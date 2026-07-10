@@ -51,7 +51,7 @@ if [[ "${latest_sha:0:7}" == "${BUILT_SHA:0:7}" ]]; then
   ok "Running the latest published build (commit ${BUILT_SHA:0:7})"
 else
   warn "This image was built from an older commit (${BUILT_SHA:0:7}) — latest on master is ${latest_sha:0:7}"
-  info "Pull the newest image: docker pull modem7/crowdsec-troubleshooter:latest"
-  info "If you just saw a new push go out, this can also mean CI is still building it — wait a few minutes and re-pull."
+  info "Pull the newest image: docker pull modem7/crowdsec-troubleshooter:latest
+If you just saw a new push go out, this can also mean CI is still building it — wait a few minutes and re-pull."
 fi
 exit 0
