@@ -30,6 +30,8 @@
 set -uo pipefail
 # shellcheck source=../../lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
+# shellcheck source=../../lib/known_issues.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/known_issues.sh"
 require_jq
 
 if [[ "${HAS_BOUNCER_URL:-false}" != true && "${HAS_TRAEFIK_API:-false}" != true ]]; then
@@ -64,8 +66,8 @@ fi
 
 if [[ "$legacy_detected" == true ]]; then
   warn "Legacy ForwardAuth-style Traefik bouncer detected at ${TRAEFIK_BOUNCER_URL}
-This bouncer type (fbonalair/freifunkmuc-style) predates CrowdSec's AppSec/WAF component.
-CrowdSec's own docs now recommend the Traefik plugin bouncer instead."
+This bouncer type (fbonalair/freifunkmuc-style) predates CrowdSec's AppSec/WAF component."
+  kb_hint "traefik-legacy-forwardauth-vs-plugin"
 fi
 
 if [[ "$plugin_detected" == true ]]; then
