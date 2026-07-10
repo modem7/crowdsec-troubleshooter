@@ -1,36 +1,24 @@
 #!/usr/bin/env bash
 # wizard.sh — interactive host-side helper for crowdsec-troubleshooter.
 #
-# Linux only (relies on `hostname -I` / `ip route` for LAN-IP detection —
-# Windows users can open an issue if they need this). Runs directly on the
-# Docker host, NOT inside the troubleshooter's own --rm container: it needs
-# a real TTY to prompt, and has to persist a credentials file across runs
-# *before* `docker run` is ever invoked, so it can't live inside a one-shot
-# container.
+# Linux only (uses `hostname -I` / `ip route` for LAN-IP detection). Runs
+# directly on the Docker host, NOT inside the troubleshooter's own --rm
+# container: it needs a real TTY to prompt, and has to persist a
+# credentials file across runs before `docker run` is ever invoked.
 #
-# Priority for every value it asks about: a currently-exported shell env
-# var wins, then a previously-saved value from the credentials file, then a
-# docker-compose.yml-derived suggestion, then blank. Nothing is ever
-# silently overwritten — every prompt shows its resolved default and a
-# blank Enter keeps it.
+# Priority for every value it asks about: an exported env var wins, then a
+# previously-saved value from the credentials file, then a
+# docker-compose.yml-derived suggestion, then blank. Every prompt shows its
+# resolved default; a blank Enter keeps it.
 #
-# Compose parsing is a best-effort regex/awk heuristic, same spirit as
-# check_lapi_url_scope.sh's heuristics — it suggests values, it never
-# claims certainty, and a failed parse degrades to asking normally rather
-# than blocking anything.
+# Compose parsing is a best-effort regex/awk heuristic — it suggests
+# values, never claims certainty, and degrades to asking normally on a
+# failed parse.
 #
-# Safe to run as `curl -fsSL <raw-url>/wizard.sh | bash`: every prompt
-# reads from /dev/tty explicitly, not the script's own stdin. Piping a
-# script into `bash` makes bash consume stdin to read the script itself —
-# by the time execution reaches a `read` inside it, stdin is already at
-# EOF, so every prompt would silently receive an empty answer with no
-# error and no visible wait. /dev/tty is the actual controlling terminal,
-# a separate device from stdin, so it stays reachable regardless of what
-# stdin is doing. Verified empirically (not assumed) with a pty-based test
-# simulating exactly this pipe shape. The one case this can't paper over —
-# no controlling terminal at all (e.g. invoked from cron/CI) — is caught
-# explicitly below with one clear error instead of N confusing per-prompt
-# "No such device" failures.
+# Safe to run as `curl -fsSL <raw-url>/wizard.sh | bash`: every prompt reads
+# from /dev/tty explicitly rather than the script's own stdin, since piping
+# into `bash` leaves stdin at EOF by the time a `read` runs. No controlling
+# terminal at all (cron/CI) is caught explicitly below with one clear error.
 
 set -uo pipefail
 
@@ -79,11 +67,9 @@ note() { printf '\033[36m→\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m!\033[0m %s\n' "$*"; }
 
 # ---- prompt helpers ----
-# `local -n` (nameref) rather than `printf -v "$1" ...`: both work for
-# writing into the caller's variable, but shellcheck understands namerefs
-# and can trace the resulting assignment — with printf -v it can't, so
-# every caller's result variable (lapi_url, lapi_key, m_login, ...) shows
-# up as a false-positive SC2154 "referenced but not assigned".
+# `local -n` (nameref), not `printf -v "$1" ...`: shellcheck can trace a
+# nameref assignment back to the caller's variable, avoiding false-positive
+# SC2154 warnings at every call site.
 prompt() {
   local -n __result="$1"
   local label="$2" default="$3"
@@ -132,11 +118,9 @@ declare -A COMPOSE=()
 # resolve_default <VARNAME> — env var > saved file value > compose
 # suggestion > blank, in that order.
 resolve_default() {
-  # Deliberately two separate `local` statements: `local var="$1"
-  # env_val="${!var:-}"` on one line fails at runtime with "invalid
-  # indirect expansion" — bash evaluates the indirect reference before
-  # `var` is fully in scope when both are declared in the same `local`
-  # command. Caught by actually running this, not by reading it.
+  # Two separate `local` statements, not one: bash evaluates an indirect
+  # reference (${!var}) before `var` is in scope if both are declared in
+  # the same `local` command, failing with "invalid indirect expansion".
   local var="$1"
   local env_val="${!var:-}"
   if [[ -n "$env_val" ]]; then echo "$env_val"; return; fi
@@ -158,15 +142,11 @@ detect_host_ip() {
 }
 
 # ---- compose-file auto-discovery via the running container itself ----
-# Rather than only asking for a compose file path, try to find the actual
-# one first: locate whichever container is actually running a
-# crowdsecurity/crowdsec image (never assume a container name — grep the
-# real `docker ps` output for the image instead), then read the
-# com.docker.compose.project.working_dir / .config_files labels Compose
-# stamps on every container it creates. Prints nothing and returns 1 on any
-# failure (docker unreachable, no such container, container not managed by
-# Compose, file not actually readable) — the caller falls back to the
-# existing cwd-guess-then-ask behavior exactly as if this didn't exist.
+# Locates whichever container runs a crowdsecurity/crowdsec image (grep
+# `docker ps` output for the image, never assume a container name), then
+# reads the com.docker.compose.project.working_dir / .config_files labels
+# Compose stamps on it. Prints nothing and returns 1 on any failure — the
+# caller falls back to the existing cwd-guess-then-ask behavior.
 detect_crowdsec_compose_file() {
   local container
   container="$(docker ps --format '{{.Names}}\t{{.Image}}' 2>/dev/null | awk -F'\t' '$2 ~ /^crowdsecurity\/crowdsec(:|$)/ {print $1; exit}')"
@@ -235,12 +215,10 @@ extract_service_block() {
 
 # extract_yaml_list <key> — reads a block on stdin, prints `- item` list
 # entries under <key>: (e.g. ports:), quotes stripped. Trailing ` #comment`
-# is also stripped, but only for unquoted items — a quoted value (a
-# Traefik label's rule, say) may legitimately contain a literal `#`, and
-# stripping there would corrupt it rather than clean it up. Real-world
-# compose files commenting each published port (`8082:8080 # Dashboard`)
-# is common enough that this isn't a hypothetical: an unstripped comment
-# broke `$2==8080`-style port matching entirely, silently.
+# is stripped for unquoted items only — a quoted value (a Traefik label's
+# rule) may legitimately contain a literal `#`, and stripping there would
+# corrupt it. Compose files commenting published ports (`8082:8080 #
+# Dashboard`) are common enough that this matters for port matching.
 extract_yaml_list() {
   local key="$1"
   awk -v key="$key" '
@@ -304,17 +282,9 @@ extract_env_value() {
 # passes a regex with dots escaped rather than a plain key.
 extract_label_value() {
   local key_regex="$1"
-  # `|| true`: grep exits 1 on "no matching label", a completely normal,
-  # expected outcome here (not every router has every label) — but under
-  # `set -o pipefail` (which the caller has active), that 1 becomes this
-  # pipeline's own exit status, and callers assigning the result via plain
-  # `var="$(extract_label_value ...)"` would have THAT non-zero status
-  # trip `set -e` immediately, wherever it happens to be enabled (bats
-  # test bodies run under -e; wizard.sh itself doesn't, but this function
-  # has no way to know which context it's called from). Caught by a bats
-  # test for the no-match path specifically — passed on a manual run
-  # without -e, only failed under bats, which is exactly the gap a
-  # grep-based "search, might not find" helper needs to be safe under.
+  # `|| true`: no matching label is a normal outcome here, but under
+  # pipefail that grep's exit 1 becomes this pipeline's status, which would
+  # trip `set -e` in a caller that has it enabled (e.g. a bats test body).
   grep -E "^${key_regex}=" | sed -E "s/^${key_regex}=//" | head -1 || true
 }
 
@@ -332,13 +302,10 @@ resolve_compose_vars() {
   for var in $(echo "$text" | grep -oE '\$\{?[A-Za-z_][A-Za-z0-9_]*\}?' | tr -d '${}' | sort -u || true); do
     val="$(grep -E "^${var}=" "$env_file" | head -1 | sed -E "s/^${var}=//" || true)"
     [[ -z "$val" ]] && continue
-    # A .env value is very often quoted (DOMAINNAME="example.com") — that's
-    # valid Compose .env syntax, and Compose itself strips the quotes
-    # before substitution. This didn't: a real user's .env had a quoted
-    # DOMAINNAME, and the raw quotes rode straight through into the
-    # suggested URL (https://traefik."example.com"). Only strips a pair
-    # that actually wraps the whole value, matching quotes on both ends —
-    # a stray single quote or a value with internal quotes is left alone.
+    # A .env value is often quoted (DOMAINNAME="example.com") — valid
+    # Compose .env syntax, which Compose itself strips before substitution.
+    # Only strips a pair that wraps the whole value; a stray or internal
+    # quote is left alone.
     if [[ "$val" == \"*\" && "$val" == *\" ]]; then
       val="${val#\"}"; val="${val%\"}"
     elif [[ "$val" == \'*\' && "$val" == *\' ]]; then
@@ -424,11 +391,8 @@ parse_compose() {
     # the dashboard. Everything else in this file (arbitrary app routers)
     # is too ambiguous to guess a security-check target from safely.
     local dash_router=""
-    # `|| true`: no dashboard router is a normal, expected outcome (most
-    # compose files won't have one) — see extract_label_value's comment
-    # above for why an unguarded grep here is a real bug under `set -e`,
-    # not just theoretical: this exact line is what a bats regression test
-    # for the no-dashboard-router path caught failing.
+    # `|| true`: no dashboard router is a normal outcome (most compose files
+    # won't have one) — same pipefail/set -e concern as extract_label_value.
     dash_router="$(echo "$labels" | grep -E '\.service=api@internal$' | sed -E 's/^traefik\.http\.routers\.([^.]+)\.service=api@internal$/\1/' | head -1 || true)"
 
     local api_port=""
@@ -440,14 +404,11 @@ parse_compose() {
         api_port="$(echo "$cmds" | grep -iE "^--entrypoints\\.${first_ep}\\.address=" | sed -E 's/.*:([0-9]+).*/\1/' | head -1 || true)"
       fi
 
-      # A real-world case, not hypothetical: a dashboard router bound only
-      # to the public HTTPS entrypoints with an auth middleware attached
-      # (SSO in front of the dashboard — a legitimate, common hardening
-      # pattern) means check_bouncer_type.sh's API-based confirmation
-      # can't work through it at all: an unauthenticated request gets
-      # challenged before ever reaching api@internal. No URL substitution
-      # fixes that — it's a real limitation of that check for this setup,
-      # not a wrong guess. Say so rather than suggest a URL fated to fail.
+      # A dashboard router with an auth/SSO middleware attached (a common
+      # hardening pattern) means check_bouncer_type.sh's unauthenticated
+      # API confirmation can never succeed through it, regardless of which
+      # URL is suggested — worth flagging rather than suggesting a URL
+      # that's fated to fail.
       dash_middlewares="$(echo "$labels" | extract_label_value "traefik\\.http\\.routers\\.${dash_router}\\.middlewares")"
       if [[ -n "$dash_middlewares" ]]; then
         warn "Dashboard router '${dash_router}' has middlewares=${dash_middlewares} attached (auth/SSO?) — check_bouncer_type.sh's Traefik-API confirmation needs UNauthenticated access, so it likely can't succeed through this router regardless of which URL is used. Only relevant if you rely on that specific check; everything else in this tool is unaffected."
@@ -469,12 +430,11 @@ parse_compose() {
     fi
     api_port="${api_port:-8080}"
 
-    # TRAEFIK_API_URL and TRAEFIK_DIRECT_URL are the same internal address
-    # here on purpose: both point at Traefik's own dashboard/API endpoint —
-    # one confirms the plugin bouncer is registered, the other is what
-    # TRAEFIK_PROTECTED_URL gets compared against for the auth-bypass check.
-    # Always http:// regardless of the public router's scheme — this is the
-    # container's own internal listener, never double-TLS-wrapped.
+    # TRAEFIK_API_URL and TRAEFIK_DIRECT_URL share the same address on
+    # purpose: one confirms the plugin bouncer is registered, the other is
+    # what TRAEFIK_PROTECTED_URL gets compared against for the auth-bypass
+    # check. Always http:// — this is the container's own internal
+    # listener, never TLS-wrapped, regardless of the public router's scheme.
     local api_host_port
     api_host_port="$(echo "$ports" | awk -F: -v p="$api_port" '$2==p {print $1}' | head -1)"
     if [[ -n "$api_host_port" && -n "$host_ip" ]]; then
@@ -486,50 +446,32 @@ parse_compose() {
       if [[ -z "$api_host_port" ]]; then warn "No published port found for Traefik's API/dashboard port (${api_port}) — suggesting the internal service name instead. That only resolves if this wizard's docker run joins the same docker network."; fi
     fi
   fi
-  # Explicit, not incidental: a bare `cond && action` as the last statement
-  # in a branch leaks `cond`'s own exit status as this function's return
-  # value when the condition is false (unlike `if cond; then action; fi`,
-  # which correctly returns 0). Two such statements above used to be exactly
-  # that shape — fixed to real if/fi, but this return is kept anyway as a
-  # guarantee independent of whichever branch happens to execute last, same
-  # spirit as troubleshoot.sh's explicit tier_status tracking for the same
-  # class of bug. Caught by a test asserting the no-dashboard-router path
-  # (no api@internal label found) still leaves parse_compose reporting
-  # success even though it deliberately suggests nothing for that case.
+  # Explicit return: guarantees success regardless of which branch above ran
+  # last, rather than leaking whatever that branch's final statement happened
+  # to exit with (same class of bug as troubleshoot.sh's tier_status tracking).
   return 0
 }
 
-# =====================================================================
-# main flow — guarded so tests can `source` this file to exercise the
-# pure helper functions above (extract_service_block, resolve_default,
-# json_escape, etc.) without triggering interactive prompts or requiring
-# docker to be installed on the machine running the tests.
+# ---------------------------------------------------------------------
+# main flow — guarded so tests can `source` this file to exercise the pure
+# helper functions above without triggering interactive prompts or
+# requiring docker to be installed on the test machine.
 #
-# `(return 0 2>/dev/null)`, not a BASH_SOURCE[0]-vs-$0 comparison: when
-# bash reads this script from stdin — `curl -fsSL <url>/wizard.sh | bash
-# -s -- wellness`, not a real file — BASH_SOURCE has zero elements, and
-# under `set -u` indexing an empty array is a hard "unbound variable"
-# crash. Defaulting it to empty avoids the crash but then compares "" to
-# $0 (literally "bash" in that mode), which is *also* wrong — it would
-# make curl|bash execution look "sourced" and exit before a single prompt
-# runs. `return` is only legal inside a function or an actually-sourced
-# script, in *any* invocation mode (file, stdin, doesn't matter) — probing
-# that directly in a subshell is the standard, version-independent way to
-# ask "am I sourced?" without relying on BASH_SOURCE/$0 at all.
-# =====================================================================
+# `(return 0 2>/dev/null)` rather than a BASH_SOURCE[0]-vs-$0 comparison:
+# when bash reads this script from stdin (`curl ... | bash`), BASH_SOURCE
+# has zero elements, which is a hard crash under `set -u` if indexed
+# directly, and comparing "" to $0 ("bash" in that mode) would also
+# misdetect curl|bash as "sourced". `return` is only legal inside a
+# function or a sourced script in any invocation mode, so probing that
+# directly in a subshell works regardless.
+# ---------------------------------------------------------------------
 if (return 0 2>/dev/null); then
   return 0
 fi
 
-# This tool is a Docker image — even for checking a bare-metal (non-Docker)
-# CrowdSec install, wizard.sh still needs to launch the troubleshooter
-# container itself. Checked as an extensible list, not a single ad-hoc
-# `command -v docker`, so a future added dependency reports alongside it in
-# one combined message rather than needing its own separate check bolted
-# on elsewhere. Only `docker` is required today — everything else wizard.sh
-# calls (awk/grep/sed/hostname/ip) is standard on any Linux system, and
-# detect_host_ip() already degrades gracefully (a warning, not a hard
-# failure) if hostname/ip are both somehow missing, which stays as-is.
+# wizard.sh itself launches the troubleshooter container, so docker is
+# required even when the CrowdSec being checked runs bare-metal. Checked as
+# a list so a future dependency reports alongside it in one message.
 REQUIRED_CMDS=(docker)
 missing_cmds=()
 for cmd in "${REQUIRED_CMDS[@]}"; do
@@ -543,11 +485,9 @@ if [[ ${#missing_cmds[@]} -gt 0 ]]; then
   exit 1
 fi
 
-# Every prompt below reads from /dev/tty explicitly (see the header comment
-# on why: it's what makes `curl -fsSL <url>/wizard.sh | bash` work at all).
-# If there's truly no controlling terminal — invoked from cron/CI, stdin
-# and /dev/tty both unavailable — fail once, clearly, here, instead of
-# letting every individual `read` fail with a cryptic "No such device".
+# If there's no controlling terminal at all (invoked from cron/CI), fail
+# once, clearly, here — rather than every individual `read` below failing
+# with a cryptic "No such device".
 { exec 3< /dev/tty; } 2>/dev/null || {
   echo "wizard.sh needs an interactive terminal to prompt for values (couldn't open /dev/tty)."
   echo "Running from a non-interactive context like cron or CI? Set the CROWDSEC_* env vars"
@@ -605,11 +545,8 @@ fi
 
 declare -A NEW=()
 
-# Vars below (lapi_url, want_traefik, td_url, lapi_key, m_login, m_password,
-# ...) are all assigned by prompt()/prompt_secret() via `local -n` namerefs
-# (see the comment above prompt()) — shellcheck's static analysis doesn't
-# consistently trace that pattern, hence the disable comments at each of
-# their first uses below.
+# Vars below are assigned by prompt()/prompt_secret() via nameref; static
+# analysis doesn't always trace that, hence the disable comments below.
 prompt lapi_url "CROWDSEC_LAPI_URL" "$(resolve_default CROWDSEC_LAPI_URL)"
 # shellcheck disable=SC2154
 NEW[CROWDSEC_LAPI_URL]="$lapi_url"

@@ -3,36 +3,22 @@
 #
 # Compares the git commit this image was built from (baked in via
 # IMAGE_GIT_SHA, see Dockerfile + .woodpecker.yml's GIT_SHA build-arg)
-# against the latest commit on this project's master branch, so a manual
-# `docker run` user finds out up-front if they're running a stale pull
-# rather than debugging against an old build. Purely informational and
-# network-gated, not credential-gated, so an unreachable GitHub API
-# degrades to a plain info line rather than the padlock/skip UI — there's
-# no credential to "add" here, just a best-effort check that didn't land.
+# against the latest commit on master, so a manual `docker run` user finds
+# out up-front if they're running a stale pull. Network-gated rather than
+# credential-gated: an unreachable GitHub API degrades to a plain info line,
+# not the padlock/skip UI, since there's no credential to add here.
 #
-# Known limitations, stated rather than papered over:
-# - Compares against the latest commit on master, not what's actually been
-#   published to Docker Hub yet. There's a brief window right after a push
-#   — while CI is still building and pushing — where this can flag an
-#   image that is, in fact, the latest one actually published.
-# - GitHub's API is called unauthenticated here (60 req/hour per source
-#   IP). A burst of runs from the same IP could hit that limit; treated as
-#   "can't verify" rather than a failure either way.
+# Known limitations:
+# - Compares against master's tip, not what's actually published to Docker
+#   Hub yet — a brief post-push window can flag an image that's already current.
+# - GitHub's API is called unauthenticated (60 req/hour per source IP);
+#   hitting that limit is treated as "can't verify", not a failure.
 #
-# A SHA mismatch alone used to be treated as "stale" outright — wrong.
-# .woodpecker.yml only rebuilds Docker Hub's image on pushes that touch
-# actual image content (see its own path: include list), on purpose:
+# A SHA mismatch alone doesn't mean a newer image was actually published:
 # wizard.sh runs on the host and is never COPY'd into the Dockerfile, so a
-# wizard.sh-only change to master legitimately has no corresponding newer
-# image to pull, ever — yet the old logic would warn "stale" forever after
-# a change like that, with no way to resolve it short of a comment change
-# hitting a watched path. Real bug, caught by a wizard.sh-only PR merging
-# and this check immediately misreporting the (correctly up-to-date)
-# published image as stale. Fixed with one extra GitHub API call — only
-# made on a SHA mismatch, so the common (already up to date) case stays at
-# one call — asking what actually changed between the built commit and
-# master's tip, and only warning if something on the same watched-path
-# list actually did.
+# wizard.sh-only change to master has no corresponding new image to pull.
+# On a mismatch, one extra API call checks whether anything on
+# .woodpecker.yml's watched path list actually changed before warning.
 
 set -uo pipefail
 # shellcheck source=../../lib/common.sh

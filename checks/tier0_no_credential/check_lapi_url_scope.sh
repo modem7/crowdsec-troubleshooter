@@ -1,32 +1,22 @@
 #!/usr/bin/env bash
 # check_lapi_url_scope.sh — Tier 0, no credential needed.
 #
-# A pure heuristic on CROWDSEC_LAPI_URL itself — something this tool already
-# has by construction, no new access required. If the host component looks
-# like a private-range LAN IP, or a DNS hostname, rather than a
-# docker-compose service name, that's consistent with reaching LAPI via a
-# host-published port rather than the internal docker network. Can't
-# confirm from here whether that port is ALSO reachable from outside the
-# LAN (that's a router/firewall fact, not visible to any container) — this
-# only flags the pattern, not the exposure.
+# A pure heuristic on CROWDSEC_LAPI_URL itself. If the host component looks
+# like a private-range LAN IP or a DNS hostname rather than a docker-compose
+# service name, that's consistent with reaching LAPI via a host-published
+# port rather than the internal docker network. Can't confirm from here
+# whether that port is ALSO reachable from outside the LAN (a router/
+# firewall fact no container can see) — this only flags the pattern.
 #
-# Dotted hostnames (e.g. any local-DNS name like "hda.home", "bob.home",
-# "fred.local" — the pattern is the dot, not any specific name) were
-# originally missed entirely — the IPv4-only regex let them fall through as
-# a false "looks internal" OK. Fixed by also flagging any host containing a
-# "." that isn't itself a dotted-quad IPv4 literal: Compose's embedded DNS
-# only ever resolves single-label service names, so a multi-label host is
-# never a compose-internal address regardless of whether it's a raw IP or a
-# name.
+# Any host containing a "." that isn't itself a dotted-quad IPv4 literal is
+# flagged too, not just LAN IPs — Compose's embedded DNS only resolves
+# single-label service names, so a multi-label host (a local-DNS name like
+# "nas.home") is never compose-internal.
 #
-# Known remaining blind spot, not fixable by this approach: a bare
-# single-label LAN hostname with no dot at all (e.g. "nas", "docker-host")
-# is syntactically identical to a compose service name — nothing in the
-# string itself distinguishes them, so this heuristic reports a false OK
-# for that case. Actually resolving the name and inspecting what answered
-# would need DNS/network introspection this tool deliberately doesn't do
-# (see DESIGN.md's "No docker.sock, ever" section) — left as an honest gap
-# rather than a heuristic likely to misfire the other way.
+# Known blind spot: a bare single-label LAN hostname with no dot (e.g.
+# "nas") is syntactically identical to a compose service name, so this
+# reports a false OK for that case — resolving it to check would need DNS
+# introspection this tool deliberately doesn't do (see DESIGN.md).
 
 set -uo pipefail
 # shellcheck source=../../lib/common.sh
@@ -44,13 +34,9 @@ is_private_ip() {
   return 1
 }
 
-# No longer suggests "use the internal service name instead" — that advice
-# only works if this troubleshooter container joins crowdsec's own docker
-# network (docker run --network <name>, or a --compose-detected network
-# via wizard.sh), which is neither guessed here nor true by default for
-# the wizard.sh / plain `docker run` route this check actually runs under.
-# A guessed compose-network suggestion that mostly won't resolve is worse
-# than no suggestion at all — see DESIGN.md.
+# Doesn't suggest "use the internal service name instead" — that only
+# resolves if this container joins crowdsec's own docker network, which
+# isn't guessed here or true by default (see DESIGN.md).
 warn_not_internal() {
   warn "CROWDSEC_LAPI_URL $1 rather than a docker-compose service name"
   info "This is consistent with reaching LAPI via a host-published port rather than internal
