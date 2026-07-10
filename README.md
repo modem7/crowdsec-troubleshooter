@@ -100,6 +100,22 @@ criteria. `lib/known_issues.sh`'s own `KB_VERSION` line is the source of
 truth for when this was last refreshed; update the count here whenever
 entries are added or removed.
 
+### Ready-to-use configs
+
+[`examples/`](./examples/) has copy-pasteable starting points instead of
+building a `docker run` invocation by hand:
+
+- [`docker-compose.troubleshooter-addon.yml`](./examples/docker-compose.troubleshooter-addon.yml) —
+  add as a service to whichever compose stack you're already running;
+  every optional `-e`/`-v` is present but commented out.
+- [`docker-compose.scenario-a-traefik-plugin.yml`](./examples/docker-compose.scenario-a-traefik-plugin.yml) —
+  a full CrowdSec + Traefik plugin bouncer stack, including a securely
+  exposed (internal-network-only) Traefik API so `check_bouncer_type.sh`
+  can actually confirm the plugin bouncer is registered.
+- [`docker-run.bare-metal-crowdsec.sh`](./examples/docker-run.bare-metal-crowdsec.sh) —
+  the bare-metal/non-Docker-CrowdSec case above, as a runnable script with
+  the real host paths already wired up.
+
 ### Or skip the `-e` flags entirely: `wizard.sh`
 
 Typing out `CROWDSEC_LAPI_URL`/`CROWDSEC_LAPI_KEY`/`CROWDSEC_MACHINE_CREDENTIALS_FILE`
@@ -145,7 +161,7 @@ file is `chmod 600`'d; treat it like any other credentials file and
 
 | Tier | Unlocks with | What it adds |
 |---|---|---|
-| 0 | Nothing beyond `CROWDSEC_LAPI_URL` | LAPI liveness, log-parsing activity, bouncer-type fingerprint (legacy or modern plugin), LAPI-URL scope heuristic, optional auth-bypass comparison |
+| 0 | Nothing beyond `CROWDSEC_LAPI_URL` | LAPI liveness, log-parsing activity, bouncer-type fingerprint (legacy or modern plugin), LAPI-URL scope heuristic, `cscli hub update`/`upgrade` cron advisory, optional auth-bypass comparison |
 | 1 | A dedicated **read-only bouncer key** | Ban-count stats (automatic), `check-ip` — the block checker |
 | 2 | A **machine credential** (read-write) | Live block/unban test, AppSec probe |
 | 3 | **Read-only host file mounts** | `DOCKER-USER` chain evidence, duplicate-acquisition detection, syslog hinting, compose-file hardening audit |
@@ -189,7 +205,9 @@ and the firewall bouncer's own packaged config, not assumed:
 Both `/etc/crowdsec/...` and `/var/log/...` above assume CrowdSec's default
 `log_dir`/config locations from a standard apt/binary install — if you've
 customized `common.log_dir` in your own `config.yaml`, use that path
-instead.
+instead. A ready-to-run reference invocation with all of the above wired
+up is in
+[`examples/docker-run.bare-metal-crowdsec.sh`](./examples/docker-run.bare-metal-crowdsec.sh).
 
 ### Running both a bare-metal and a Dockerized instance side by side
 
@@ -275,13 +293,23 @@ docker build -t crowdsec-troubleshooter:local .
 
 ## Status
 
-Early scaffold. Tier 0 and the block checker (tier 1) are implemented and
-should work as-is against a real CrowdSec instance — not yet tested against
-one, so treat as a starting point to validate rather than trust blindly.
-Tier 2 (live block test) is implemented with the same caveat, plus a hard
-safety requirement: the cleanup trap that removes the test ban must be
-verified to actually fire under real failure conditions before this is
-trusted against a production instance.
+Past the early-scaffold stage: tiers 0–2 have real production mileage now,
+not just mock-server coverage — including bugs found and fixed against
+actual CrowdSec/Traefik deployments (a `/v1/decisions` POST that turned out
+not to exist, a `.env` quote-handling bug, a Traefik dashboard reachable
+only through SSO), each traced against the real API/tool source rather
+than guessed at, and each with a regression test locking in the fix. `bats
+tests/*.bats` covers the mock-server side; see `DESIGN.md`'s "Corrections
+made mid-design" section for what was found only by running things for
+real.
+
+One caveat that's still open rather than closed: `test_live_block.sh`'s
+cleanup trap (explicit `SIGTERM`/`SIGINT` handling, required since the
+script runs as PID 1) is verified sound by reasoning about Linux signal
+semantics, but hasn't been empirically fire-tested by actually killing a
+run mid-flight against a live decision. Worth doing before leaning on it
+under real failure conditions in production, not just trusting the trap
+logic on paper.
 
 Known open questions, not yet resolved:
 - Whether `cscli capi status`-equivalent data (`check_capi.sh`) is reachable
