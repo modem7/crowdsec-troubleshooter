@@ -12,6 +12,22 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")" || { echo "Failed to cd into script directory — this shouldn't happen inside the container"; exit 1; }
 source lib/common.sh
 
+# `issues` is pure offline reference data — no LAPI, no credential, nothing
+# network-shaped at all. Handled before capability_check.sh on purpose: that
+# script hard-fails without CROWDSEC_LAPI_URL ("nothing in this tool is
+# meaningful without it"), which used to be true but stops being true for a
+# KB lookup — the whole point is that it also works airgapped, with zero
+# env vars set.
+if [[ "${1:-}" == "issues" ]]; then
+  source lib/known_issues.sh
+  case "${2:-}" in
+    "") kb_list ;;
+    search) kb_search "${3:-}" ;;
+    *) kb_show "${2}" ;;
+  esac
+  exit 0
+fi
+
 # ---- capability detection, always first ----
 source capability_check.sh
 
@@ -37,7 +53,7 @@ case "${1:-}" in
     ACTION="tier-run"
     ;;
   *)
-    echo "Usage: troubleshoot.sh [--tier N] | check-ip <ip> | live-test --target-url <url> | setup <script-name>"
+    echo "Usage: troubleshoot.sh [--tier N] | check-ip <ip> | live-test --target-url <url> | setup <script-name> | issues [<id>|search <term>]"
     exit 2
     ;;
 esac

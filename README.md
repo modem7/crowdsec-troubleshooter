@@ -49,6 +49,47 @@ docker run --rm -e CROWDSEC_LAPI_URL=... \
   modem7/crowdsec-troubleshooter live-test --target-url https://your-service.example.com
 ```
 
+### Known-issues reference: `issues`
+
+A curated, offline knowledge base of common CrowdSec / CrowdSec+Traefik
+problems — the ones this tool has no reliable, credential-free way to
+actually detect (upstream version regressions, nftables internals, "which
+exact release broke this"), so they're reference material rather than a
+check. Works with **zero credentials and zero network access** — it's
+data shipped inside the image (`lib/known_issues.sh`), not a live lookup,
+so it works in restricted-network/offline-image environments too. Links in
+the output are plain text, meant to be read or copy-pasted to a machine
+that does have internet access — the tool itself never dereferences them:
+
+```bash
+docker run --rm modem7/crowdsec-troubleshooter issues                    # list all entries
+docker run --rm modem7/crowdsec-troubleshooter issues search bridge      # search title/symptom/fix text
+docker run --rm modem7/crowdsec-troubleshooter issues traefik-plugin-tls-mtls-confusion  # full detail + link
+```
+
+Where a check's own finding matches a KB entry, the check prints that entry's
+title and link inline as part of its own output (a `kb_hint` call — see
+`check_bouncer_type.sh` for the example) instead of pointing at another
+script's filename as if that were a fix. Not every check is wired up yet;
+`troubleshoot.sh issues` remains the way to browse the full set by hand.
+
+This isn't "airgapped" in the strictest sense — it's aimed at a restricted
+network that can reach your LAPI and other Docker services but may not be
+able to reach Docker Hub/GitHub. Nothing in this tool needs the latter to
+function: the KB is baked into the image at build time, not fetched at
+runtime. (The one thing in this repo that *does* make an optional runtime
+call to GitHub is `check_image_freshness.sh`, an unrelated staleness check
+that already degrades to "can't verify" rather than failing if it can't
+reach it.)
+
+Curated by hand from `crowdsecurity/crowdsec`, `crowdsecurity/cs-firewall-bouncer`,
+and `maxlerebourg/crowdsec-bouncer-traefik-plugin` GitHub issues — not a
+live feed, and not exhaustive. Each entry links to the best available
+resolution (official docs where one exists, otherwise the GitHub
+comment/PR/release that actually fixed it), and every link is verified to
+resolve before being added. Pulling a newer image is the only thing needed
+to refresh it.
+
 ### Or skip the `-e` flags entirely: `wizard.sh`
 
 Typing out `CROWDSEC_LAPI_URL`/`CROWDSEC_LAPI_KEY`/`CROWDSEC_MACHINE_CREDENTIALS_FILE`
