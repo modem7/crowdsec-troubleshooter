@@ -154,7 +154,7 @@ see the README's Quick start for why). Full usage: `./wizard.sh --help`.
 | Flag / env var | Purpose |
 |---|---|
 | `--file <path>` | Credentials file to load/save (default `./.crowdsec-troubleshooter.env`) |
-| `--compose <path>` | A `docker-compose.yml` to auto-suggest values from (best-effort — see the README) |
+| `--compose <path>` | A `docker-compose.yml` to auto-suggest values from (best-effort — see the README). If omitted, the wizard first tries to find it itself: it looks for a running container whose image is `crowdsecurity/crowdsec` and reads the `com.docker.compose.project.working_dir`/`.config_files` labels Compose stamps on it — no container name assumed. Falls back to checking `./docker-compose.yml`/`.yaml` in the current directory, then to just asking, exactly as if this detection didn't exist. |
 | `wellness` / `check-ip <ip>` / `live-test <target-url>` | Which action to run — omit to get an interactive menu |
 | `WIZARD_IMAGE` | Override the image to run (default `modem7/crowdsec-troubleshooter`) — useful for testing a locally-built image |
 | `WIZARD_SKIP_PULL=1` | Skip the `docker pull` the wizard normally does before every run — needed when `WIZARD_IMAGE` points at a local-only tag that was never pushed to a registry |
