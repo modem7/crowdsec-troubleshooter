@@ -388,3 +388,18 @@ EOF
   run detect_crowdsec_compose_file
   [ "$status" -ne 0 ]
 }
+
+@test "wizard.sh exits with a clear message when docker is missing from PATH" {
+  # This is main-flow behavior, not a sourceable pure function (it's after
+  # the return-guard), so it has to be exercised via a real subprocess
+  # execution, not sourcing. A bare empty PATH also hides `bash` itself
+  # from the outer shell's own lookup before it can even exec the script,
+  # so build a minimal PATH with just bash symlinked in, deliberately
+  # omitting docker.
+  tmpbin="$(mktemp -d)"
+  ln -s "$(command -v bash)" "${tmpbin}/bash"
+  PATH="$tmpbin" run bash "${BATS_TEST_DIRNAME}/../wizard.sh"
+  rm -rf "$tmpbin"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Missing required package(s): docker"* ]]
+}

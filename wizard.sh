@@ -521,10 +521,27 @@ if (return 0 2>/dev/null); then
   return 0
 fi
 
-command -v docker >/dev/null 2>&1 || {
-  echo "docker not found on PATH — this wizard launches the container for you, so docker itself needs to be installed and reachable."
+# This tool is a Docker image — even for checking a bare-metal (non-Docker)
+# CrowdSec install, wizard.sh still needs to launch the troubleshooter
+# container itself. Checked as an extensible list, not a single ad-hoc
+# `command -v docker`, so a future added dependency reports alongside it in
+# one combined message rather than needing its own separate check bolted
+# on elsewhere. Only `docker` is required today — everything else wizard.sh
+# calls (awk/grep/sed/hostname/ip) is standard on any Linux system, and
+# detect_host_ip() already degrades gracefully (a warning, not a hard
+# failure) if hostname/ip are both somehow missing, which stays as-is.
+REQUIRED_CMDS=(docker)
+missing_cmds=()
+for cmd in "${REQUIRED_CMDS[@]}"; do
+  command -v "$cmd" >/dev/null 2>&1 || missing_cmds+=("$cmd")
+done
+if [[ ${#missing_cmds[@]} -gt 0 ]]; then
+  echo "Missing required package(s): ${missing_cmds[*]}"
+  echo "This wizard launches the troubleshooter container for you (docker run ...), so"
+  echo "these need to be installed and reachable first — even when the CrowdSec you're"
+  echo "checking runs bare-metal, this tool itself is still a Docker image."
   exit 1
-}
+fi
 
 # Every prompt below reads from /dev/tty explicitly (see the header comment
 # on why: it's what makes `curl -fsSL <url>/wizard.sh | bash` work at all).
