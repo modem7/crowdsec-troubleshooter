@@ -36,14 +36,19 @@ if [[ -z "$response" || "$response" == "null" || "$response" == "[]" ]]; then
   exit 0
 fi
 
-count="$(echo "$response" | jq 'length')"
+# One jq call for scope+origin together (@tsv, one line per decision)
+# instead of three separate jq calls (length, scope, origin) each
+# re-parsing the same JSON from scratch — count falls out of the same
+# output via wc -l instead of its own jq 'length' call.
+decisions="$(jq -r '.[] | [(.scope // "unknown"), (.origin // "unknown")] | @tsv' <<<"$response")"
+count="$(wc -l <<<"$decisions")"
 ok "${count} decision(s) currently active"
 
-by_scope="$(echo "$response" | jq -r '.[].scope // "unknown"' | sort | uniq -c | sort -rn)"
-by_origin="$(echo "$response" | jq -r '.[].origin // "unknown"' | sort | uniq -c | sort -rn)"
+by_scope="$(cut -f1 <<<"$decisions" | sort | uniq -c | sort -rn)"
+by_origin="$(cut -f2 <<<"$decisions" | sort | uniq -c | sort -rn)"
 
 echo "   By scope:"
-echo "$by_scope" | awk '{printf "     %s: %s\n", $2, $1}'
+awk '{printf "     %s: %s\n", $2, $1}' <<<"$by_scope"
 echo "   By origin:"
-echo "$by_origin" | awk '{printf "     %s: %s\n", $2, $1}'
+awk '{printf "     %s: %s\n", $2, $1}' <<<"$by_origin"
 exit 0
