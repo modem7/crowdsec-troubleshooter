@@ -94,7 +94,7 @@ file is `chmod 600`'d; treat it like any other credentials file and
 
 | Tier | Unlocks with | What it adds |
 |---|---|---|
-| 0 | Nothing beyond `CROWDSEC_LAPI_URL` | LAPI liveness, log-parsing activity, bouncer-type fingerprint, LAPI-URL scope heuristic, optional auth-bypass comparison |
+| 0 | Nothing beyond `CROWDSEC_LAPI_URL` | LAPI liveness, log-parsing activity, bouncer-type fingerprint (legacy or modern plugin), LAPI-URL scope heuristic, optional auth-bypass comparison |
 | 1 | A dedicated **read-only bouncer key** | `check-ip` — the block checker |
 | 2 | A **machine credential** (read-write) | Live block/unban test, AppSec probe |
 | 3 | **Read-only host file mounts** | `DOCKER-USER` chain evidence, duplicate-acquisition detection, syslog hinting, compose-file hardening audit |

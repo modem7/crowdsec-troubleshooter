@@ -60,9 +60,19 @@ strength (API key type) and file-mount access — not capabilities.
 - **The Traefik plugin bouncer has no separate service to probe.** It runs
   in-process inside Traefik. Positively confirming it (rather than just
   failing to find the legacy bouncer) means querying Traefik's own API —
-  a genuinely separate integration surface from CrowdSec's LAPI, kept in
-  `checks/optional_traefik_api/` rather than silently bundled into the
-  CrowdSec-specific checks.
+  a genuinely separate integration surface from CrowdSec's LAPI. Originally
+  kept in its own `checks/optional_traefik_api/` folder rather than
+  bundled into the CrowdSec-specific checks, on the theory that a
+  different integration surface deserved a different, opt-in home. That
+  separation had a real cost nobody noticed until it was pointed out
+  directly: `optional_traefik_api/` was never actually globbed by
+  `troubleshoot.sh`'s tier0 sweep, so the plugin-bouncer check silently
+  never ran for anyone, ever — `wizard.sh` happily collected
+  `TRAEFIK_API_URL` and exported it into the container, but nothing
+  downstream consumed it. Merged into `check_bouncer_type.sh` (tier0) so
+  both bouncer types get the same automatic, always-attempted coverage —
+  the plugin bouncer is CrowdSec's current recommended approach and
+  deserves first-class detection, not a check nobody could actually reach.
 - **`docker.sock:...:ro` is not the mitigation it looks like.** The `:ro`
   flag only stops a container rewriting the socket file itself — it does
   nothing to restrict which Docker API calls get made over that socket,
