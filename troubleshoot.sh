@@ -43,6 +43,9 @@ case "${1:-}" in
   live-test)
     ACTION="live-test"; ACTION_ARG="${3:-}"  # expects: live-test --target-url <url>
     ;;
+  appsec-test)
+    ACTION="appsec-test"; ACTION_ARG="${3:-}"  # expects: appsec-test --target-url <url>
+    ;;
   setup)
     exec "setup/${2}.sh" "${@:3}"
     ;;
@@ -50,7 +53,7 @@ case "${1:-}" in
     ACTION="tier-run"
     ;;
   *)
-    echo "Usage: troubleshoot.sh [--tier N] | check-ip <ip> | live-test --target-url <url> | setup <script-name> | issues [<id>|search <term>]"
+    echo "Usage: troubleshoot.sh [--tier N] | check-ip <ip> | live-test --target-url <url> | appsec-test --target-url <url> | setup <script-name> | issues [<id>|search <term>]"
     exit 2
     ;;
 esac
@@ -140,5 +143,8 @@ case "$ACTION" in
     ;;
   live-test)
     bash checks/tier2_machine/test_live_block.sh --target-url "$ACTION_ARG"
+    ;;
+  appsec-test)
+    bash checks/tier2_machine/test_appsec_probe.sh --target-url "$ACTION_ARG"
     ;;
 esac

@@ -36,12 +36,14 @@ Actions:
   wellness                  Tier-0 wellness check (default if omitted)
   check-ip <ip>              Look up an IP's ban status (needs a bouncer key)
   live-test <target-url>     Prove blocking works end-to-end (needs a machine credential)
+  appsec-test <target-url>   Prove AppSec/WAF is inspecting requests (needs a machine credential)
 
 Examples:
   ./wizard.sh
   ./wizard.sh --compose ./docker-compose.yml wellness
   ./wizard.sh check-ip 198.51.100.23
   ./wizard.sh live-test https://your-service.example.com
+  ./wizard.sh appsec-test https://your-service.example.com
 
 Re-run any time — values you've already entered are reused as defaults
 from ./.crowdsec-troubleshooter.env (override the path with --file).
@@ -56,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     wellness) ACTION="wellness"; shift ;;
     check-ip) ACTION="check-ip"; ACTION_ARG="${2:-}"; shift $(( $# >= 2 ? 2 : 1 )) ;;
     live-test) ACTION="live-test"; ACTION_ARG="${2:-}"; shift $(( $# >= 2 ? 2 : 1 )) ;;
+    appsec-test) ACTION="appsec-test"; ACTION_ARG="${2:-}"; shift $(( $# >= 2 ? 2 : 1 )) ;;
     -h|--help) usage ;;
     *) echo "Unknown argument: $1"; usage ;;
   esac
@@ -511,12 +514,13 @@ echo "────────────────────────�
 if [[ -z "$ACTION" ]]; then
   echo "What do you want to run?"
   PS3="Choice: "
-  select choice in "Wellness check (tier 0)" "check-ip <ip>" "live-test <target-url>"; do
+  select choice in "Wellness check (tier 0)" "check-ip <ip>" "live-test <target-url>" "appsec-test <target-url>"; do
     case "$choice" in
       "Wellness check (tier 0)") ACTION="wellness"; break ;;
       "check-ip <ip>") ACTION="check-ip"; prompt ACTION_ARG "IP address to check" ""; break ;;
       "live-test <target-url>") ACTION="live-test"; prompt ACTION_ARG "Target URL to test blocking against" ""; break ;;
-      *) echo "Pick 1, 2, or 3." ;;
+      "appsec-test <target-url>") ACTION="appsec-test"; prompt ACTION_ARG "Target URL to test AppSec/WAF inspection against" ""; break ;;
+      *) echo "Pick 1, 2, 3, or 4." ;;
     esac
   done < /dev/tty
 fi
@@ -589,8 +593,10 @@ case "$ACTION" in
     NEW[CROWDSEC_LAPI_KEY]="$lapi_key"
     ;;
 
-  live-test)
-    [[ -z "$ACTION_ARG" ]] && prompt ACTION_ARG "Target URL to test blocking against" ""
+  live-test|appsec-test)
+    target_prompt="Target URL to test blocking against"
+    [[ "$ACTION" == "appsec-test" ]] && target_prompt="Target URL to test AppSec/WAF inspection against"
+    [[ -z "$ACTION_ARG" ]] && prompt ACTION_ARG "$target_prompt" ""
     prompt host_creds_path "Path to your machine credentials JSON (blank to create one now)" "${PREV[_MACHINE_CREDS_HOST_PATH]:-}"
     if [[ -z "$host_creds_path" ]]; then
       note "On your CrowdSec server, run: docker exec crowdsec cscli machines add troubleshooter --auto -f -"
@@ -626,7 +632,7 @@ for key in "${!NEW[@]}"; do
   esac
 done
 
-if [[ "$ACTION" == "live-test" ]]; then
+if [[ "$ACTION" == "live-test" || "$ACTION" == "appsec-test" ]]; then
   host_path="${NEW[_MACHINE_CREDS_HOST_PATH]}"
   host_path_abs="$(cd "$(dirname "$host_path")" 2>/dev/null && pwd)/$(basename "$host_path")"
   container_path="/creds/$(basename "$host_path")"
@@ -638,6 +644,7 @@ DOCKER_ARGS+=("$IMAGE_NAME")
 case "$ACTION" in
   check-ip) DOCKER_ARGS+=(check-ip "$ACTION_ARG") ;;
   live-test) DOCKER_ARGS+=(live-test --target-url "$ACTION_ARG") ;;
+  appsec-test) DOCKER_ARGS+=(appsec-test --target-url "$ACTION_ARG") ;;
 esac
 
 # Pull before running so this always exercises the latest published image
