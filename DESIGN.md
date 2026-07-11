@@ -79,9 +79,29 @@ strength (API key type) and file-mount access — not capabilities.
   since it's a Unix socket, not a regular file. Relevant to
   `check_compose_hardening.sh`'s docker.sock rule, and worth remembering
   generally.
-- **CAPI status and the exact AppSec probe path are unverified.** Left in as
-  clearly-flagged placeholders (`check_capi.sh`, `test_appsec_probe.sh`)
-  rather than either silently dropped or presented with false confidence.
+- **CAPI status is still unverified; the AppSec probe path was, but no
+  longer is.** `check_capi.sh` remains a clearly-flagged placeholder rather
+  than either silently dropped or presented with false confidence. The
+  AppSec probe path (`crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl`) was
+  confirmed fixed and per-CrowdSec (not per-install generated) against
+  `crowdsecurity/crowdsec-skill`'s own health-check reference, and
+  `test_appsec_probe.sh` was rewritten to actually use it: both
+  `crowdsecurity/http-generic-test` and `crowdsecurity/appsec-generic-test`
+  are `remediation:false` "trigger" scenarios — they produce an alert, not
+  a ban decision — so the check confirms via `GET /v1/alerts?scenario=...`
+  rather than by looking for a block. That endpoint was verified (not
+  assumed) two ways before writing any code against it: `pkg/apiserver/
+  controllers/controller.go` confirms `GET /v1/alerts` sits behind the same
+  machine-JWT `jwtAuth` tier as the `POST /v1/alerts` `test_live_block.sh`
+  already used successfully, and `pkg/database/alertfilter.go`'s
+  `case "scenario":` confirms the query param does an exact match on the
+  alert's own scenario field server-side, not just a client-side struct tag
+  that might not be honored. The check itself compares a baseline of
+  existing matching-scenario alert ids against a post-probe poll (up to
+  ~15s, the aggregation delay crowdsec-skill's docs describe) rather than
+  filtering by a time window, since a `since=<duration>` filter would be
+  exposed to clock skew between this container and the LAPI host that a
+  baseline diff isn't.
 - **Machine credentials file held a `.token` field that nothing ever
   produced.** `test_live_block.sh` originally read a ready-made bearer
   token straight out of the credentials file, but `cscli machines add

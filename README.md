@@ -48,6 +48,13 @@ docker run --rm -e CROWDSEC_LAPI_URL=... \
   -e CROWDSEC_MACHINE_CREDENTIALS_FILE=/creds/machine.json \
   -v /path/on/host/machine.json:/creds/machine.json:ro \
   modem7/crowdsec-troubleshooter live-test --target-url https://your-service.example.com
+
+# If AppSec/WAF is in front of the target, prove it's actually inspecting
+# requests (same machine credential as live-test above)
+docker run --rm -e CROWDSEC_LAPI_URL=... \
+  -e CROWDSEC_MACHINE_CREDENTIALS_FILE=/creds/machine.json \
+  -v /path/on/host/machine.json:/creds/machine.json:ro \
+  modem7/crowdsec-troubleshooter appsec-test --target-url https://your-service.example.com
 ```
 
 ### Known-issues reference: `issues`
@@ -315,12 +322,16 @@ Known open questions, not yet resolved:
 - Whether `cscli capi status`-equivalent data (`check_capi.sh`) is reachable
   via LAPI's HTTP API at all, or is database-only like bouncer listing
   turned out to be. Flagged as a placeholder in the script itself.
-- The exact AppSec probe path format (`test_appsec_probe.sh`) — CrowdSec's
-  docs show an example token but don't confirm whether it's fixed or
-  generated per-install.
 - Version/CVE checking (`versioncheck/cve.sh`) has no reliable network-only
   mechanism yet — currently accepts a manual hint rather than detecting
   anything itself.
+
+`test_appsec_probe.sh`'s probe path was one of these until it wasn't: the
+token (`crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl`) is confirmed fixed and
+per-CrowdSec, not per-install generated, and the check now confirms the
+resulting alert over `GET /v1/alerts?scenario=...` (verified against
+CrowdSec's own LAPI route registration and DB filter code — see
+`DESIGN.md`) rather than shipping as an unverified stub.
 
 ## License
 

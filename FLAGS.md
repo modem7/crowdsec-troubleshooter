@@ -189,6 +189,8 @@ Rarely needed — mostly for forks, CI, or working around something specific.
 | `GITHUB_API_BASE` | `https://api.github.com` | Test-only override for the image-freshness check's API endpoint. |
 | `IP_ECHO_URL` | `https://api.ipify.org` | Test-only override for `live-test`'s self-IP lookup. |
 | `CRON_MOUNT_BASE` | `/mnt/cron` | Test-only override for the cron-mount base path — real usage always mounts to the fixed default. |
+| `APPSEC_PROBE_POLL_ATTEMPTS` | `5` | Test-only override for `test_appsec_probe.sh`'s poll attempt count. |
+| `APPSEC_PROBE_POLL_INTERVAL` | `3` | Test-only override (seconds) for `test_appsec_probe.sh`'s poll interval — real usage waits long enough for CrowdSec's alert aggregation delay. |
 
 ## `wizard.sh` flags
 
@@ -219,7 +221,10 @@ confidence. See `DESIGN.md` before touching these:
 - **`check_capi.sh`** (tier 2) — whether CAPI/community-blocklist status is
   reachable via LAPI's HTTP API at all is unverified. Currently a no-op
   placeholder that says so.
-- **`test_appsec_probe.sh`** (tier 2) — the exact AppSec probe path format
-  is unverified against a live instance.
 - **`versioncheck/cve.sh`** — has no real CrowdSec-version-detection
   mechanism; takes a manual `CROWDSEC_VERSION_HINT` instead.
+
+`test_appsec_probe.sh` (tier 2) used to be listed here too — its probe path
+is now confirmed fixed (not per-install generated) and the check verifies
+the resulting alert over LAPI. See `DESIGN.md`'s "Corrections made
+mid-design" section.

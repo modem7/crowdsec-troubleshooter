@@ -94,9 +94,11 @@ instead of more check-script string literals. Browse the current set with
 
 ## Open items — check DESIGN.md before "fixing" these
 
-- `check_capi.sh` and `test_appsec_probe.sh` are flagged placeholders with
-  unresolved open questions, not incomplete code to finish blindly. Read
-  the comment block at the top of each before touching them.
+- `check_capi.sh` is a flagged placeholder with unresolved open questions,
+  not incomplete code to finish blindly. Read the comment block at the top
+  before touching it. (`test_appsec_probe.sh` was the same kind of
+  placeholder but is now implemented and verified — see DESIGN.md's
+  "Corrections made mid-design" section for what was confirmed and how.)
 - `versioncheck/cve.sh` has no real implementation yet — it takes a manual
   hint. Don't invent an LAPI-version-detection mechanism without confirming
   it actually exists in the API first (see the bouncer-listing lesson in
