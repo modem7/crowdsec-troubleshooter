@@ -27,4 +27,3 @@ repository:
   allow_update_branch: true
   enable_automated_security_fixes: true
   enable_vulnerability_alerts: true
-  # Labels are managed by .github/config/labels.yml + the labelsync workflow
