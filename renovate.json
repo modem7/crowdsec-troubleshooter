@@ -1,20 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-  ],
+  "extends": ["github>modem7/renovate-config"],
   "packageRules": [
     {
       "description": "Don't touch example compose files — they're illustrative (showing a simple :latest pattern for people to copy), not something this repo actually deploys itself",
       "matchFileNames": ["examples/**"],
       "enabled": false
     }
-  ],
-  "assignees": [
-    "modem7"
-  ],
-  "labels": [
-    "dependencies"
-  ],
-  "timezone": "Europe/London"
+  ]
 }
