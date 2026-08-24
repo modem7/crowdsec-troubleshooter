@@ -20,17 +20,12 @@ when:
 # Single image, no resolution-variant matrix needed (unlike docker-rickroll,
 # which builds 4 separate tagged variants from the same Dockerfile pointed
 # at different video assets) — this is one straightforward multi-arch build.
+# Dockerfile lint and functional testing happen in .github/workflows/ci.yml,
+# not here - this pipeline only builds and pushes images.
 steps:
-  - name: lint-dockerfile
-    image: hadolint/hadolint:latest-alpine
-    commands:
-      - hadolint --version
-      - hadolint Dockerfile
-
   - name: build-and-push
     image: woodpeckerci/plugin-docker-buildx
     privileged: true
-    depends_on: [lint-dockerfile]
     settings:
       repo: ${CI_REPO}
       dockerfile: Dockerfile
