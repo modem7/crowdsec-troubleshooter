@@ -11,7 +11,7 @@ FROM alpine:3.24
 ARG GIT_SHA=unknown
 ENV IMAGE_GIT_SHA=$GIT_SHA
 
-RUN apk add --no-cache bash curl jq
+RUN apk upgrade --no-cache && apk add --no-cache bash curl jq
 
 WORKDIR /app
 COPY --link lib/ lib/
