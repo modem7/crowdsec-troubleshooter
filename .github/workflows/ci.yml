@@ -202,6 +202,10 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           input: /tmp/image.tar
+          # Pin the Trivy binary itself to latest, not just the action —
+          # the action's own default (v0.70.0) lagged behind the vulnerability
+          # DB's CVE feed and missed newly-fixed advisories.
+          version: latest
           format: sarif
           output: trivy-results.sarif
           severity: 'CRITICAL,HIGH'
