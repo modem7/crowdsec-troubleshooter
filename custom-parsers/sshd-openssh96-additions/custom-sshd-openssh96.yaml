@@ -1,0 +1,78 @@
+#
+# Local supplement to crowdsecurity/sshd-logs.
+#
+# DO NOT place this file inside /etc/crowdsec/parsers/s01-parse/ under the
+# same name as the hub-managed sshd-logs.yaml, and never edit that file
+# directly -- `cscli hub update && cscli hub upgrade` overwrites it on every
+# run. This file is a separate, plain (non-hub) file in the same stage
+# directory; the engine loads every *.yaml in a stage dir regardless of
+# origin, and `cscli hub upgrade` only touches files it manages itself, so
+# this one survives hub upgrades untouched.
+#
+# Install:
+#   cp custom-sshd-openssh96.yaml /etc/crowdsec/parsers/s01-parse/
+#   crowdsec -t                      # validate config
+#   systemctl reload crowdsec        # or restart
+#
+# Background: OpenSSH 9.6p1 (seen on Ubuntu-3ubuntu13.19) emits two
+# failed-auth message shapes that crowdsecurity/sshd-logs (hub, current as
+# of Sep 2026) does not match:
+#
+#   error: maximum authentication attempts exceeded for invalid user <user> from <ip> port <port> ssh2 [preauth]
+#   Disconnecting invalid user <user> <ip> port <port>: Too many authentication failures [preauth]
+#
+# The closest hub patterns don't fit:
+#   - SSHD_INVALID_USER expects the line to start with "Invalid user ..."
+#     -- the "error: maximum authentication attempts exceeded for invalid
+#     user ..." wording never starts with that phrase.
+#   - SSHD_PREAUTH_AUTHENTICATING_USER_ALT expects "Disconnected from
+#     (authenticating|invalid) user ..." -- OpenSSH 9.6 instead says
+#     "Disconnecting (authenticating|invalid) user ..." (present tense, no
+#     "from"), which is a different literal and doesn't match.
+#
+# Confirmed via `cscli explain --type syslog -v` against real log lines on
+# a native (non-Docker) install: s00-raw (timestamp/syslog parsing) was
+# green, s01-parse failed to match either line against sshd-logs.yaml.
+#
+onsuccess: next_stage
+#debug: true
+filter: "evt.Parsed.program in ['sshd-session', 'sshd']"
+name: custom/sshd-openssh96-additions
+description: "Additional OpenSSH 9.6+ failed-auth message patterns not yet covered by crowdsecurity/sshd-logs"
+pattern_syntax:
+  # Same IP grok workaround crowdsecurity/sshd-logs uses -- the built-in IP
+  # grok pattern drops the last octet of an IPv4 address when it's the last
+  # thing matched and that octet starts with a 2.
+  # https://github.com/crowdsecurity/crowdsec/issues/938
+  IPv4_WORKAROUND: (?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)
+  IP_WORKAROUND: (?:%{IPV6}|%{IPv4_WORKAROUND})
+  # error: maximum authentication attempts exceeded for invalid user X from IP port P ssh2 [preauth]
+  # error: maximum authentication attempts exceeded for X from IP port P ssh2 [preauth]   (valid user)
+  SSHD_MAX_AUTH_ATTEMPTS_EXCEEDED: 'error: maximum authentication attempts exceeded for (invalid user )?%{USERNAME:sshd_invalid_user} from %{IP_WORKAROUND:sshd_client_ip} port \d+ ssh2( \[preauth\])?'
+  # Disconnecting invalid user X IP port P: Too many authentication failures [preauth]
+  # Disconnecting authenticating user X IP port P: <reason> [preauth]
+  SSHD_DISCONNECTING_USER: 'Disconnecting (authenticating|invalid) user %{USERNAME:sshd_invalid_user} %{IP_WORKAROUND:sshd_client_ip} port \d+: %{GREEDYDATA} \[preauth\]'
+nodes:
+  - grok:
+      name: "SSHD_MAX_AUTH_ATTEMPTS_EXCEEDED"
+      apply_on: message
+      statics:
+        - meta: log_type
+          value: ssh_failed-auth
+        - meta: target_user
+          expression: "evt.Parsed.sshd_invalid_user"
+        - meta: source_ip
+          expression: "evt.Parsed.sshd_client_ip"
+  - grok:
+      name: "SSHD_DISCONNECTING_USER"
+      apply_on: message
+      statics:
+        - meta: log_type
+          value: ssh_failed-auth
+        - meta: target_user
+          expression: "evt.Parsed.sshd_invalid_user"
+        - meta: source_ip
+          expression: "evt.Parsed.sshd_client_ip"
+statics:
+  - meta: service
+    value: ssh
