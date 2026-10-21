@@ -6,27 +6,54 @@ name: Publish to GHCR
 # give: an image can't get published without CI passing for that exact
 # commit, regardless of whether master got there via a PR merge or a direct
 # push (both trigger ci.yml the same way).
+#
+# workflow_dispatch is the manual escape hatch: republish master's HEAD,
+# optionally with no_cache to rebuild every layer. Needed when the base
+# image's packages change without its tag moving (e.g. a CA-store fix) —
+# the gha cache otherwise reuses the old layers and republishes stale.
+# It only runs from master, and the guard step below keeps the "CI passed
+# for this exact commit" guarantee.
 on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        description: "Rebuild without the layer cache (forces fresh base-image packages)"
+        type: boolean
+        default: false
 
 # Scoped to exactly what this workflow needs — packages:write for GHCR,
-# nothing else. Every other workflow in this repo stays read-only by
-# default; see the label-manager permissions fix for why this matters.
+# actions:read for the manual-run CI check, nothing else. Every other
+# workflow in this repo stays read-only by default; see the label-manager
+# permissions fix for why this matters.
 permissions:
   contents: read
   packages: write
+  actions: read
 
 jobs:
   publish:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
+      - name: Manual run - require a successful CI run for this commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ok=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --status success --json databaseId --jq 'length')
+          [[ "$ok" -gt 0 ]] || { echo "::error::No successful CI run for $SHA; refusing to publish"; exit 1; }
+
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ env.SHA }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4.4.0
@@ -49,7 +76,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ghcr.io/modem7/crowdsec-troubleshooter:latest
-            ghcr.io/modem7/crowdsec-troubleshooter:${{ github.event.workflow_run.head_sha }}
+            ghcr.io/modem7/crowdsec-troubleshooter:${{ env.SHA }}
+          no-cache: ${{ inputs.no_cache == true }}
+          pull: ${{ inputs.no_cache == true }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -67,9 +96,9 @@ jobs:
 
       - name: Pull the just-published image fresh and verify it runs
         run: |
-          docker pull ghcr.io/modem7/crowdsec-troubleshooter:${{ github.event.workflow_run.head_sha }}
+          docker pull ghcr.io/modem7/crowdsec-troubleshooter:${{ env.SHA }}
           set +e
-          output=$(docker run --rm ghcr.io/modem7/crowdsec-troubleshooter:${{ github.event.workflow_run.head_sha }} 2>&1)
+          output=$(docker run --rm ghcr.io/modem7/crowdsec-troubleshooter:${{ env.SHA }} 2>&1)
           code=$?
           set -e
           echo "$output"
