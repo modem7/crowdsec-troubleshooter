@@ -9,6 +9,9 @@
 
 setup() {
   cd "$BATS_TEST_DIRNAME/.."
+  # Newer bats passes the test name as $1 to setup(); wizard.sh's arg parser
+  # would treat it as an unknown argument, so clear positional params first.
+  set --
   source wizard.sh
 }
 
